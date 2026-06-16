@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://spec.concordex.dev/schemas/cb-check-response.json",
+  "$id": "https://spec.dmzagent.com/schemas/cb-check-response.json",
   "title": "CBCheckResponse",
   "description": "Response body for POST /v1/cb/check",
   "type": "object",

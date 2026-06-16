@@ -1,6 +1,6 @@
 name: Validate Spec
 
-# Self-validation for concordex-sdk-spec. Runs on every commit to main
+# Self-validation for dmzagent-sdk-spec. Runs on every commit to main
 # and every PR. Confirms that:
 #
 #   1. VERSION is a valid semver.
@@ -116,7 +116,7 @@ jobs:
           assert "fixtures" in em, "error-mapping missing fixtures"
           allowed_exceptions = {
               "ValidationError", "AuthError", "PermissionError",
-              "ServerError", "ConcordexError", "CBOpenError", None,
+              "ServerError", "DMZAgentError", "CBOpenError", None,
               # Alias the corpus uses for "either ValidationError OR
               # the language's idiomatic argument exception" — see
               # runner-spec.md §error-mapping.
@@ -165,9 +165,9 @@ jobs:
           python <<'PY'
           import pathlib, re, sys
           wf = pathlib.Path(".github/workflows/promote.yml").read_text()
-          want = {"concordex-sdk-python", "concordex-sdk-typescript",
-                  "concordex-sdk-csharp", "concordex-sdk-java"}
-          present = set(re.findall(r'concordex-sdk-(?:python|typescript|csharp|java)', wf))
+          want = {"dmzagent-sdk-python", "dmzagent-sdk-typescript",
+                  "dmzagent-sdk-csharp", "dmzagent-sdk-java"}
+          present = set(re.findall(r'dmzagent-sdk-(?:python|typescript|csharp|java)', wf))
           missing = want - present
           extra   = present - want
           if missing or extra:

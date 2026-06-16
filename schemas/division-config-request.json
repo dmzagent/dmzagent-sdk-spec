@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/division-config-request.json",
+  "title": "DivisionConfigUpdate",
+  "description": "New config blob to replace a division's current configuration.",
+  "type": "object",
+  "required": ["config"],
+  "properties": {
+    "config": { "type": "object" }
+  }
+}

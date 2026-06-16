@@ -1,6 +1,6 @@
-# Contributing to concordex-sdk-spec
+# Contributing to dmzagent-sdk-spec
 
-This repository is the source of truth for the Concordex SDK surface. A
+This repository is the source of truth for the DMZAgent SDK surface. A
 change here causes a cascade through every language SDK — please treat
 edits accordingly.
 
@@ -42,7 +42,7 @@ parity.
 
 ## What lives here vs in the SDK repos
 
-| In `concordex-sdk-spec`              | In each SDK repo                       |
+| In `dmzagent-sdk-spec`              | In each SDK repo                       |
 |--------------------------------------|----------------------------------------|
 | The surface contract (`sdk-spec.md`) | The implementation                     |
 | JSON schemas                         | The wire serializer / deserializer     |

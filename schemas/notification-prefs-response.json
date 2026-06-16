@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/notification-prefs-response.json",
+  "title": "NotificationPrefs",
+  "description": "Current notification preferences for an API key.",
+  "type": "object",
+  "required": ["email_cadence", "push_enabled"],
+  "properties": {
+    "email_cadence":      { "type": "string", "enum": ["off", "daily", "weekly"] },
+    "email_paused_until": { "type": "string", "format": "date-time" },
+    "push_enabled":       { "type": "boolean" },
+    "phone":              { "type": "string" },
+    "sms_enabled":        { "type": "boolean" },
+    "whatsapp_enabled":   { "type": "boolean" },
+    "webhook_url":        { "type": "string", "format": "uri" }
+  }
+}

@@ -1,6 +1,6 @@
 # AGENTS.md — briefing for SDK implementation agents
 
-If you are an agent tasked with implementing a Concordex SDK in
+If you are an agent tasked with implementing a DMZAgent SDK in
 TypeScript, C#, or Java, this file tells you what to read, what to
 build, and what "done" means.
 
@@ -60,7 +60,7 @@ Your SDK is done when:
 
 ## Open scope questions: don't decide unilaterally
 
-If you encounter ambiguity in the spec, file an issue in `concordex-sdk-spec`
+If you encounter ambiguity in the spec, file an issue in `dmzagent-sdk-spec`
 with the title `[ambiguity] §<section>: <one-line summary>`. Do not
 guess and ship — language SDKs that drift in interpretation are exactly
 what this spec exists to prevent.

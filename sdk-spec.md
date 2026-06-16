@@ -1,10 +1,10 @@
-# Concordex SDK Specification
+# DMZAgent SDK Specification
 
-**Version:** see [`VERSION`](./VERSION) — currently `0.5.0`
+**Version:** see [`VERSION`](./VERSION) — currently `0.6.0`
 **Status:** pre-1.0 (MINOR bumps may include breaking wire changes)
-**Last updated:** 2026-05-30
+**Last updated:** 2026-06-13
 
-This document defines the public surface every Concordex SDK MUST
+This document defines the public surface every DMZAgent SDK MUST
 implement. Every language binding — Python, TypeScript, C#, Java — is a
 translation of this surface. Same constructor shape, same methods (under
 language-idiomatic naming), same return types, same error hierarchy,
@@ -19,7 +19,7 @@ repository. No SDK ships a version the spec hasn't blessed.
 
 ### 1.1 Base URL
 
-Default: `https://api.concordex.dev`. The constructor MUST accept an
+Default: `https://api.dmzagent.com`. The constructor MUST accept an
 override (used for staging, self-hosted, and local development against
 `https://staging.api.eastern-shore-solutions.com` or `http://localhost:8080`).
 
@@ -36,7 +36,7 @@ keys that do not begin with `ck_` at construction time. Treat key
 material as a secret in logs (redact or omit).
 
 Do NOT carry the dashboard session cookie. Do NOT set the legacy
-`X-Concordex-Key` header — deprecated and slated for removal in v1.0.
+`X-DMZAgent-Key` header — deprecated and slated for removal in v1.0.
 
 ### 1.3 Content-Type
 
@@ -48,11 +48,11 @@ All request bodies are JSON-encoded. SDKs MUST set
 SDKs MUST set:
 
 ```
-User-Agent: concordex-<language>/<spec-version>
+User-Agent: dmzagent-<language>/<spec-version>
 ```
 
-Examples: `concordex-python/0.5.0`, `concordex-typescript/0.5.0`,
-`concordex-csharp/0.5.0`, `concordex-java/0.5.0`. Optional suffix in the
+Examples: `dmzagent-python/0.6.0`, `dmzagent-typescript/0.6.0`,
+`dmzagent-csharp/0.6.0`, `dmzagent-java/0.6.0`. Optional suffix in the
 form `(<runtime-info>)` is permitted.
 
 ### 1.5 Timeout
@@ -61,12 +61,42 @@ Default: 10000ms (10 seconds). The constructor MUST expose an override
 in the language's native duration type (`float` seconds for Python,
 `number` ms for TypeScript, `TimeSpan` for C#, `Duration` for Java).
 
-### 1.6 Async mode header
+### 1.6 Ingestion contract
 
-For `/v1/agent-stream/event`, default behavior is synchronous (server
-reasons immediately, returns the rich envelope). Setting
-`X-Concordex-Async: true` switches to fire-and-forget — server queues,
-returns minimal envelope only.
+Event ingestion is **accepted-only async** by default: the server stores
+the frame, enqueues it for background fan-out reasoning across the
+division's workspaces, and returns immediately with a lightweight ack.
+Per-workspace reasoning outcomes are retrieved out-of-band via
+`await_outcome()` (§5.10), webhooks (§9), or the SDK stream.
+
+The server returns a status field `accepted: true` when the frame was
+stored and enqueued, or `accepted: false` when validation or server
+capacity rejected it. Do NOT treat `accepted: true` as "reasoning
+completed" — it means "the system has the frame and will reason on it."
+
+The legacy synchronous mode (server reasons inline, returns the rich
+envelope) is deprecated and will be removed in v1.0.
+
+### 1.7 Reasoning mode
+
+DMZAgent uses **trace-level reasoning** by default. Every ingested
+frame is grouped into a trace (§C.1) based on the subject's type and
+the configured trace pattern. While a trace is open, frames are stored
+and acknowledged but not reasoned immediately. When the trace closes,
+reasoning runs once over every frame in the trace as a batch.
+`await_outcome()` blocks until the trace closes and batch reasoning
+completes.
+
+A **per-frame** mode is available as a premium meter: every frame
+triggers immediate background reasoning independently. This is
+configured via the division config endpoint (§2.5, §2.6).
+
+The reasoning mode is read from the division config at ingestion time.
+SDKs do not set the mode directly; operators configure it through the
+division config endpoint.
+
+The `capture()` response is identical in both modes — `accepted: true`
+means the frame was stored, not that reasoning finished.
 
 ---
 
@@ -91,47 +121,26 @@ Emit one event into the agent stream.
 | `occurred_at`        | string (ISO-8601)   | no       | Defaults to server receive-time                                    |
 | `metadata`           | object              | no       | Free-form per-event metadata                                       |
 
-#### Response body — synchronous (default)
+#### Response body
 
 ```json
 {
   "interaction_id": "int_abc",
-  "subjects": ["user:ws:bot", "user:ws:cust"],
-  "queued": false,
+  "subjects": ["bot", "cust"],
   "frame_id": "frame_xyz",
-  "subject_id": "user:ws:bot",
-  "outcome": "scored",
-  "triage_decision": "deep",
-  "tags_fired": ["risk.refund_pressure", "tone.frustrated"],
-  "scored_by_canons": ["canon_market_abnormality_v3"],
-  "soul_version": 42,
-  "ledger_index": 1234,
-  "follow_my_data": "/w/ws_xxx/frames/frame_xyz"
-}
-```
-
-#### Response body — async (`X-Concordex-Async: true`)
-
-```json
-{
-  "interaction_id": "int_abc",
-  "subjects": ["user:ws:bot", "user:ws:cust"],
-  "queued": true
+  "accepted": true,
+  "n_workspaces": 2,
+  "follow_my_data": "/v1/frames/frame_xyz/story"
 }
 ```
 
 #### Fields that MAY be absent
 
-When the server can't determine a value (e.g. no tags fired), it omits
-the field rather than returning `null` or an empty array. The SDK MUST
-treat missing fields as "unknown", not as an empty result. `EmitResult`
-fields backed by optional response keys MUST be exposed as optional /
-nullable in the language.
-
-#### Outcome enum
-
-`outcome` ∈ {`scored`, `tagged`, `no_tags_fired`, `rejected`, `error`}.
-SDKs SHOULD expose this as an enum in the language.
+When the server can't determine a value, it omits the field rather than
+returning `null` or an empty array. The SDK MUST treat missing fields as
+"unknown", not as an empty result. `EmitResult` and `CaptureResult` fields
+backed by optional response keys MUST be exposed as optional / nullable
+in the language.
 
 ### 2.2 POST /v1/cb/check
 
@@ -172,6 +181,109 @@ method; the SDK derives `scope` and `scope_ref` from which was set.
 
 ---
 
+### 2.3 GET /v1/settings/notifications
+
+Fetch the current API key's notification preferences.
+
+#### Response body
+
+```json
+{
+  "email_cadence": "daily",
+  "email_paused_until": null,
+  "push_enabled": true,
+  "phone": "+14155551234",
+  "sms_enabled": false,
+  "whatsapp_enabled": true,
+  "webhook_url": null
+}
+```
+
+| Field                | Type                | Notes                                       |
+|----------------------|---------------------|---------------------------------------------|
+| `email_cadence`      | enum string         | `off` \| `daily` \| `weekly`                |
+| `email_paused_until` | string (ISO-8601) \| null | Null when not paused                  |
+| `push_enabled`       | boolean             | In-app push notifications                   |
+| `phone`              | string \| null      | E.164 phone number for SMS/WhatsApp         |
+| `sms_enabled`        | boolean             | SMS delivery enabled for this phone         |
+| `whatsapp_enabled`   | boolean             | WhatsApp delivery enabled for this phone    |
+| `webhook_url`        | string \| null      | Custom webhook URL for notification delivery|
+
+### 2.4 PUT /v1/settings/notifications
+
+Update the current API key's notification preferences. Supplied fields
+are updated; omitted fields are left unchanged.
+
+#### Request body
+
+All fields are optional:
+
+| Field                | Type                | Notes                                       |
+|----------------------|---------------------|---------------------------------------------|
+| `email_cadence`      | enum string         | `off` \| `daily` \| `weekly`                |
+| `email_paused_until` | string (ISO-8601) \| null | Set to null to resume                 |
+| `push_enabled`       | boolean             |                                             |
+| `phone`              | string              | E.164 format, e.g. `+14155551234`           |
+| `sms_enabled`        | boolean             |                                             |
+| `whatsapp_enabled`   | boolean             |                                             |
+| `webhook_url`        | string \| null      | Custom webhook URL; null to clear           |
+
+#### Response body
+
+Same shape as GET (§2.3) — the complete current set of preferences after
+the update is applied.
+
+### 2.5 GET /v1/divisions/{id}/config
+
+Read a division's JSON configuration blob. Used for operator-level
+settings such as `reasoning_mode`.
+
+#### Path parameters
+
+| Parameter    | Type   | Notes                                       |
+|-------------|--------|---------------------------------------------|
+| `id`        | string | Division id, e.g. `div:abc`                 |
+
+#### Response body
+
+```json
+{
+  "config": {
+    "reasoning_mode": "per_trace"
+  }
+}
+```
+
+`config` is an arbitrary JSON object. The server does not enforce a
+fixed schema beyond being a valid JSON object. The SDK returns the
+object as-is (typed as `Record<string, unknown>` / `dict[str, Any]`).
+
+### 2.6 PUT /v1/divisions/{id}/config
+
+Replace a division's full JSON configuration blob. Requires elevated
+permissions (tenant_admin+).
+
+#### Path parameters
+
+Same as GET (§2.5).
+
+#### Request body
+
+```json
+{
+  "config": {
+    "reasoning_mode": "per_trace",
+    "custom_setting": 42
+  }
+}
+```
+
+#### Response body
+
+Same shape as GET — the config as stored after replacement.
+
+---
+
 ## 3. Error handling
 
 The server returns standard HTTP status codes. Every SDK MUST map them
@@ -183,7 +295,7 @@ to a typed exception hierarchy:
 | 401    | `AuthError`         | API key missing / invalid / revoked  |
 | 403    | `PermissionError`   | key valid but lacks scope            |
 | 5xx    | `ServerError`       | transient — safe to retry            |
-| other  | `ConcordexError`    | unexpected status                    |
+| other  | `DMZAgentError`    | unexpected status                    |
 
 `CBOpenError` (canonical name) is NOT raised from the HTTP layer. It is
 raised by the `guard()` context-manager / using-block when
@@ -219,12 +331,12 @@ language:
 
 | Language    | Class name          |
 |-------------|---------------------|
-| Python      | `Concordex`         |
-| TypeScript  | `Concordex`         |
-| C#          | `ConcordexClient`   |
-| Java        | `ConcordexClient`   |
+| Python      | `DMZAgent`         |
+| TypeScript  | `DMZAgent`         |
+| C#          | `DMZAgentClient`   |
+| Java        | `DMZAgentClient`   |
 
-C# and Java diverge from the bare `Concordex` name because both
+C# and Java diverge from the bare `DMZAgent` name because both
 languages reserve unqualified type names for value-bearing entities and
 both expect a `Client` / service suffix for HTTP service classes.
 
@@ -233,9 +345,9 @@ both expect a `Client` / service suffix for HTTP service classes.
 | Spec name      | Type                 | Required | Default                          |
 |----------------|----------------------|----------|----------------------------------|
 | `api_key`      | string               | yes      | (none)                           |
-| `base_url`     | string               | no       | `https://api.concordex.dev`      |
+| `base_url`     | string               | no       | `https://api.dmzagent.com`      |
 | `timeout`      | duration             | no       | 10000ms / 10s                    |
-| `user_agent`   | string               | no       | `concordex-<lang>/<spec-version>`|
+| `user_agent`   | string               | no       | `dmzagent-<lang>/<spec-version>`|
 
 ### 4.2 Thread safety
 
@@ -276,6 +388,9 @@ per §8):
 
 - `kind: string` — REQUIRED, must be in `EVENT_KINDS`
 - `agent_subject_id: string` — REQUIRED
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`. Determines the trace pattern
+  (§C.1) used for grouping and deviation evaluation.
 - `payload: object` — defaults to `{}`
 - `interaction_id?: string`
 - `interaction_kind?: string` — default `"chat_session"`
@@ -296,6 +411,8 @@ Convenience wrapper for `kind = "subject_says"`.
 - `subject_id: string` — the speaker, REQUIRED
 - `text: string` — REQUIRED
 - `agent_subject_id: string` — REQUIRED (conversation anchor)
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`
 - `interaction_id?: string`
 - `subjects?: array<subject>`
 - `payload_extra?: object` — merged into `payload` alongside `{text}`
@@ -310,6 +427,8 @@ this emits the intent, not the result.
 - `subject_id: string` — the agent invoking the tool, REQUIRED
 - `tool: string` — REQUIRED
 - `args: object` — defaults to `{}`
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`
 - `interaction_id?: string`
 - `subjects?: array<subject>`
 
@@ -323,6 +442,8 @@ Convenience wrapper for `kind = "tool_result"`. Pair with the prior
 - `subject_id: string` — REQUIRED
 - `tool: string` — REQUIRED
 - `result: any` — REQUIRED (the tool's return value; SDK JSON-encodes)
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`
 - `interaction_id?: string`
 - `subjects?: array<subject>`
 
@@ -335,6 +456,8 @@ sensor readings).
 - `agent_subject_id: string` — REQUIRED
 - `subjects: array<subject>` — REQUIRED
 - `payload: object` — REQUIRED
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`
 - `interaction_id?: string`
 
 ### 5.6 `check(subject_id? | interaction_id?) → CheckResult`
@@ -364,15 +487,109 @@ language-canonical `CBOpenError` MUST be raised before yielding.
 Factory that returns a Conversation handle (see §6).
 
 - `participants: array<participant>` — REQUIRED, non-empty. Each
-  participant: `{subject_id, role?, kind?, metadata?}`.
+  participant: `{subject_id, role?, kind?, subject_type?, metadata?}`.
+  When `subject_type` is omitted, individual method calls on the
+  conversation handle MUST supply it.
 - `agent_subject_id?: string` — derived from participants if omitted;
   see §6.1.
 - `kind?: string` — interaction_kind, default `"chat_session"`.
 - `metadata?: object`.
 
-### 5.9 `close() → void`
+### 5.9 `capture(subject_id, kind, payload, ...) → CaptureResult`
+
+Ingest a single behavior event and return the accepted-only ack. This is
+the primary ingestion method for the accepted-only async contract.
+
+Unlike `emit_event`, `capture` returns a lightweight `CaptureResult`
+that does NOT include per-workspace reasoning outcomes — those are
+retrieved out-of-band via `await_outcome`, webhooks, or the SDK stream.
+
+Parameters:
+
+- `subject_id: string` — REQUIRED, the subject performing the
+  behavior. A free-form slug like `"bot"` or `"cust"`; the server
+  resolves it to the API key's division.
+- `kind: string` — REQUIRED, must be in `EVENT_KINDS`
+- `subject_type: string` — REQUIRED, one of `"chat"`, `"sensor"`,
+  `"lead"`, `"ticket"`, `"journey"`. Determines the trace pattern
+  (§C.1) used for grouping and deviation evaluation.
+- `payload: object` — defaults to `{}`
+- `agent_subject_id?: string` — conversation anchor. Required when
+  `kind` is `subject_says`, `tool_call`, or `tool_result` and the
+  event is part of a tracked interaction.
+- `interaction_id?: string`
+- `interaction_kind?: string` — default `"chat_session"`
+- `subjects?: array<subject>`
+- `speaker_subject_id?: string`
+- `speaker_role?: string`
+- `occurred_at?: string` — ISO-8601
+- `metadata?: object`
+
+Validation: throw the language's canonical validation error when `kind`
+is not one of `EVENT_KINDS`. Throw a validation error when
+`subject_type` is not one of the five allowed values.
+
+### 5.10 `await_outcome(frame_id, timeout?) → OutcomeResult`
+
+Block until reasoning completes for a frame and return the outcome. Polls
+the frame story endpoint at a backoff interval (start 100ms, double to
+max 2s, cap at `timeout`). Raises `TimeoutError` (language-canonical) if
+the timeout is reached before reasoning completes.
+
+This is the **poll variant** of the three retrieval modes (poll, webhook,
+stream). Use it when the calling code needs a synchronous-feeling
+response and can tolerate up to `timeout` latency.
+
+Parameters:
+
+- `frame_id: string` — returned by `capture().frame_id`
+- `timeout?: float` — seconds, default 30.0. MUST cap at 120.0.
+
+Returns `OutcomeResult` (§7.4) with per-workspace reasoning results.
+
+### 5.11 `close() → void`
 
 Release the underlying HTTP client. Idempotent.
+
+### 5.12 `get_notification_prefs() → NotificationPrefs`
+
+Fetch the current API key's notification preferences (§3.1).
+
+Returns `NotificationPrefs` (§7.8).
+
+### 5.13 `update_notification_prefs(...) → NotificationPrefs`
+
+Update notification preferences. Only supplied fields are touched.
+
+Parameters (all optional):
+
+- `email_cadence?: "off" | "daily" | "weekly"`
+- `email_paused_until?: string | null` — ISO-8601; null to resume
+- `push_enabled?: boolean`
+- `phone?: string` — E.164 format
+- `sms_enabled?: boolean`
+- `whatsapp_enabled?: boolean`
+- `webhook_url?: string | null` — null to clear
+
+Returns `NotificationPrefs` (§7.8).
+
+### 5.14 `get_division_config(division_id) → DivisionConfig`
+
+Read a division's configuration blob (§3.3).
+
+- `division_id: string` — REQUIRED
+
+Returns `DivisionConfig` (§7.9).
+
+### 5.15 `update_division_config(division_id, config) → DivisionConfig`
+
+Replace a division's full configuration blob (§3.4). Requires elevated
+permissions (tenant_admin+).
+
+- `division_id: string` — REQUIRED
+- `config: object` — REQUIRED, arbitrary JSON object
+
+Returns `DivisionConfig` (§7.9).
 
 ---
 
@@ -429,25 +646,71 @@ an `end_interaction` event.
 
 ### 7.1 `EmitResult`
 
-Returned by every event-emit method.
+Returned by every event-emit method (`emit_event`, `subject_says`,
+`tool_call`, `tool_result`, `observation`).
 
 | Field             | Type                  | Notes                                          |
 |-------------------|-----------------------|------------------------------------------------|
 | `interaction_id`  | string                | "" if server omitted                           |
 | `subjects`        | array<string>         | subject ids on the resulting frame             |
-| `queued`          | boolean               | true in async mode, false in sync              |
-| `frame_id`        | string?               | sync mode only                                 |
-| `subject_id`      | string?               | sync mode only — the primary subject            |
-| `outcome`         | enum?                 | sync mode only — see §2.1                       |
-| `triage_decision` | string?               | sync mode only — `deep` \| `shallow`           |
-| `tags_fired`      | array<string>?        | sync mode only                                 |
-| `scored_by_canons`| array<string>?        | sync mode only — canon ids                      |
-| `soul_version`    | integer?              | sync mode only                                 |
-| `ledger_index`    | integer?              | sync mode only                                 |
-| `follow_my_data`  | string?               | sync mode only — dashboard path to this frame  |
+| `queued`          | boolean               | true (inferred from accepted when absent)      |
+| `accepted`        | boolean?              | true when the frame was stored and enqueued    |
+| `n_workspaces`    | integer?              | number of workspaces the frame fanned out to   |
+| `frame_id`        | string?               | frame id for outcome retrieval                 |
+| `follow_my_data`  | string?               | path to the frame story                        |
 | `raw`             | object                | the full server JSON response                  |
 
-### 7.2 `CheckResult`
+Legacy fields (`outcome`, `triage_decision`, `tags_fired`,
+`soul_version`, `ledger_index`) are no longer populated — those values
+are available on the `OutcomeResult` after reasoning completes.
+
+### 7.2 `CaptureResult`
+
+Returned by `capture()`.
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `frame_id`        | string                | frame id for outcome retrieval                 |
+| `accepted`        | boolean               | true when the frame was stored and enqueued    |
+| `n_workspaces`    | integer               | number of workspaces the frame fanned out to   |
+| `interaction_id`  | string                | "" if server omitted                           |
+| `subjects`        | array<string>         | subject ids on the resulting frame             |
+| `follow_my_data`  | string?               | path to the frame story                        |
+| `raw`             | object                | the full server JSON response                  |
+
+### 7.3 `OutcomeResult`
+
+Returned by `await_outcome()`.
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `frame_id`        | string                | the frame that was reasoned                     |
+| `outcome`         | string                | `skipped` \| `no_change` \| `applied` \| `failed` |
+| `error`           | object?               | `{code, message}` present only when failed     |
+| `tags_fired`      | array<tag_fired>      | tags that fired across all workspaces          |
+| `reasoning`       | array<trace>          | per-workspace reasoning traces                 |
+| `soul_version`    | integer?              | subject's soul version after reasoning         |
+| `finished_at`     | string                | ISO-8601 when reasoning completed              |
+
+Where `tag_fired` is:
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `tag_id`          | string                | canonical tag id                               |
+| `strength`        | number                | 0.0 – 1.0                                     |
+| `family`          | string?               | tag family id                                  |
+| `name`            | string?               | human-readable tag name                        |
+
+And `trace` is:
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `workspace_id`    | string                | workspace that produced this trace             |
+| `outcome`         | string                | per-workspace outcome                          |
+| `tags_proposed`   | array<tag_fired>?     | tags this workspace's reasoning proposed       |
+| `error`           | object?               | present only when per-workspace reasoning failed|
+
+### 7.5 `CheckResult`
 
 Returned by `check()`.
 
@@ -464,7 +727,56 @@ Returned by `check()`.
 | `route_latency_ms` | number          | server-side route handler latency                |
 | `raw`              | object          | the full server JSON response                    |
 
-### 7.3 Immutability
+### 7.6 `ReviewEvent`
+
+Webhook payload type for triage/review events delivered via the
+coordinate lane (see §9.2).
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `event_id`        | string                | unique event id                                |
+| `type`            | string                | `review.opened` \| `review.resolved` \| `review.updated` |
+| `review_id`       | string                | the review object id                           |
+| `subject_id`      | string                | the subject under review                       |
+| `tag_id`          | string                | the tag that fired                             |
+| `level`           | string                | `review` \| `escalate`                        |
+| `status`          | string                | `open` \| `resolved` \| `dismissed` \| `accepted` |
+| `tier`            | string                | `workspace` \| `division` \| `vendor`         |
+| `decision`        | string?               | human's decision (present when resolved)       |
+| `workspace_id`    | string                | home workspace                                 |
+| `division_id`     | string?               | home division                                  |
+| `frame_id`        | string?               | triggering frame                               |
+| `occurred_at`     | string                | ISO-8601 event timestamp                       |
+
+### 7.8 `NotificationPrefs`
+
+Returned by `get_notification_prefs()` and `update_notification_prefs()`.
+
+| Field                | Type                  | Notes                                     |
+|----------------------|-----------------------|-------------------------------------------|
+| `email_cadence`      | string                | `off` \| `daily` \| `weekly`             |
+| `email_paused_until` | string \| null        | ISO-8601, null when not paused            |
+| `push_enabled`       | boolean               | In-app push                               |
+| `phone`              | string \| null        | E.164 phone number                        |
+| `sms_enabled`        | boolean               | SMS delivery enabled                      |
+| `whatsapp_enabled`   | boolean               | WhatsApp delivery enabled                 |
+| `webhook_url`        | string \| null        | Custom webhook URL for notification delivery|
+| `raw`                | object                | The full server JSON response             |
+
+### 7.9 `DivisionConfig`
+
+Returned by `get_division_config()` and `update_division_config()`.
+
+| Field       | Type                  | Notes                                     |
+|-------------|-----------------------|-------------------------------------------|
+| `config`    | object                | Arbitrary JSON blob. Empty `{}` when none.|
+| `raw`       | object                | The full server JSON response             |
+
+The `config` object is the division's free-form configuration. Canonical
+keys recognized by the server include `reasoning_mode` (`"per_frame"` or
+`"per_trace"`, see §1.7).
+
+### 7.10 Immutability
 
 Result types MUST be immutable in the language (Python `@dataclass(frozen=True)`,
 TypeScript `readonly`, C# `record`, Java `record`).
@@ -481,10 +793,15 @@ your SDK MUST expose.
 
 | Canonical            | Python             | TypeScript         | C#                  | Java               |
 |----------------------|--------------------|--------------------|---------------------|--------------------|
-| `Concordex`          | `Concordex`        | `Concordex`        | `ConcordexClient`   | `ConcordexClient`  |
+| `DMZAgent`          | `DMZAgent`        | `DMZAgent`        | `DMZAgentClient`   | `DMZAgentClient`  |
 | `Conversation`       | `Conversation`     | `Conversation`     | `Conversation`      | `Conversation`     |
 | `EmitResult`         | `EmitResult`       | `EmitResult`       | `EmitResult` (record) | `EmitResult` (record) |
+| `CaptureResult`      | `CaptureResult`    | `CaptureResult`    | `CaptureResult` (record) | `CaptureResult` (record) |
+| `OutcomeResult`      | `OutcomeResult`    | `OutcomeResult`    | `OutcomeResult` (record) | `OutcomeResult` (record) |
+| `ReviewEvent`        | `ReviewEvent`      | `ReviewEvent`      | `ReviewEvent` (record) | `ReviewEvent` (record) |
 | `CheckResult`        | `CheckResult`      | `CheckResult`      | `CheckResult` (record) | `CheckResult` (record) |
+| `NotificationPrefs`  | `NotificationPrefs`| `NotificationPrefs`| `NotificationPrefs` (record) | `NotificationPrefs` (record) |
+| `DivisionConfig`     | `DivisionConfig`   | `DivisionConfig`   | `DivisionConfig` (record)    | `DivisionConfig` (record)    |
 | `EVENT_KINDS`        | `EVENT_KINDS`      | `EVENT_KINDS`      | `EventKinds.All`    | `EventKinds.ALL`   |
 
 ### 8.2 Methods
@@ -498,9 +815,15 @@ your SDK MUST expose.
 | `observation`      | `observation`      | `observation`       | `Observation`       | `observation`       |
 | `check`            | `check`            | `check`             | `Check`             | `check`             |
 | `guard`            | `guard`            | `guard`             | `Guard`             | `guard`             |
+| `capture`          | `capture`          | `capture`           | `Capture`           | `capture`           |
+| `await_outcome`    | `await_outcome`    | `awaitOutcome`      | `AwaitOutcome`      | `awaitOutcome`      |
 | `conversation`     | `conversation`     | `conversation`      | `Conversation` (method) | `conversation`  |
 | `close`            | `close`            | `close`             | `Close` / `Dispose` | `close`             |
 | `add_subject`      | `add_subject`      | `addSubject`        | `AddSubject`        | `addSubject`        |
+| `get_notification_prefs` | `get_notification_prefs` | `getNotificationPrefs` | `GetNotificationPrefs` | `getNotificationPrefs` |
+| `update_notification_prefs` | `update_notification_prefs` | `updateNotificationPrefs` | `UpdateNotificationPrefs` | `updateNotificationPrefs` |
+| `get_division_config` | `get_division_config` | `getDivisionConfig` | `GetDivisionConfig` | `getDivisionConfig` |
+| `update_division_config` | `update_division_config` | `updateDivisionConfig` | `UpdateDivisionConfig` | `updateDivisionConfig` |
 
 ### 8.3 Constructor parameters
 
@@ -510,32 +833,46 @@ your SDK MUST expose.
 | `base_url`   | `base_url`   | `baseUrl`    | `baseUrl`    | `baseUrl`    |
 | `timeout`    | `timeout`    | `timeout`    | `timeout`    | `timeout`    |
 | `user_agent` | `user_agent` | `userAgent`  | `userAgent`  | `userAgent`  |
+| `subject_type` | `subject_type` | `subjectType` | `SubjectType` | `subjectType` |
 
 ### 8.4 Result fields
 
 | Canonical            | Python              | TypeScript            | C# (record property) | Java (record component) |
 |----------------------|---------------------|-----------------------|----------------------|-------------------------|
-| `interaction_id`     | `interaction_id`    | `interactionId`       | `InteractionId`      | `interactionId`         |
+| `interaction_id`     | `interaction_id`    | `interactionId`        | `InteractionId`      | `interactionId`         |
 | `subject_id`         | `subject_id`        | `subjectId`           | `SubjectId`          | `subjectId`             |
 | `frame_id`           | `frame_id`          | `frameId`             | `FrameId`            | `frameId`               |
-| `triage_decision`    | `triage_decision`   | `triageDecision`      | `TriageDecision`     | `triageDecision`        |
+| `accepted`           | `accepted`          | `accepted`            | `Accepted`           | `accepted`              |
+| `n_workspaces`       | `n_workspaces`      | `nWorkspaces`         | `NWorkspaces`        | `nWorkspaces`           |
+| `outcome`            | `outcome`           | `outcome`             | `Outcome`            | `outcome`               |
 | `tags_fired`         | `tags_fired`        | `tagsFired`           | `TagsFired`          | `tagsFired`             |
-| `scored_by_canons`   | `scored_by_canons`  | `scoredByCanons`      | `ScoredByCanons`     | `scoredByCanons`        |
 | `soul_version`       | `soul_version`      | `soulVersion`         | `SoulVersion`        | `soulVersion`           |
-| `ledger_index`       | `ledger_index`      | `ledgerIndex`         | `LedgerIndex`        | `ledgerIndex`           |
 | `follow_my_data`     | `follow_my_data`    | `followMyData`        | `FollowMyData`       | `followMyData`          |
 | `fired_policies`     | `fired_policies`    | `firedPolicies`       | `FiredPolicies`      | `firedPolicies`         |
 | `route_latency_ms`   | `route_latency_ms`  | `routeLatencyMs`      | `RouteLatencyMs`     | `routeLatencyMs`        |
+| `error`              | `error`             | `error`               | `Error`              | `error`                 |
+| `review_id`          | `review_id`         | `reviewId`            | `ReviewId`           | `reviewId`              |
+| `tag_id`             | `tag_id`            | `tagId`               | `TagId`              | `tagId`                 |
+| `workspace_id`       | `workspace_id`      | `workspaceId`         | `WorkspaceId`        | `workspaceId`           |
+| `division_id`        | `division_id`       | `divisionId`          | `DivisionId`         | `divisionId`            |
+| `email_cadence`      | `email_cadence`     | `emailCadence`       | `EmailCadence`       | `emailCadence`          |
+| `email_paused_until` | `email_paused_until`| `emailPausedUntil`   | `EmailPausedUntil`   | `emailPausedUntil`      |
+| `push_enabled`       | `push_enabled`      | `pushEnabled`        | `PushEnabled`        | `pushEnabled`           |
+| `phone`              | `phone`             | `phone`              | `Phone`              | `phone`                 |
+| `sms_enabled`        | `sms_enabled`       | `smsEnabled`         | `SmsEnabled`         | `smsEnabled`            |
+| `whatsapp_enabled`   | `whatsapp_enabled`  | `whatsappEnabled`    | `WhatsappEnabled`    | `whatsappEnabled`       |
+| `webhook_url`        | `webhook_url`       | `webhookUrl`         | `WebhookUrl`         | `webhookUrl`            |
+| `config`             | `config`            | `config`             | `Config`             | `config`                |
 
 ### 8.5 Exceptions
 
 | Canonical            | Python              | TypeScript            | C#                                       | Java                                    |
 |----------------------|---------------------|-----------------------|------------------------------------------|-----------------------------------------|
-| `ConcordexError`     | `ConcordexError`    | `ConcordexError`      | `ConcordexException`                     | `ConcordexException`                    |
-| `AuthError`          | `AuthError`         | `AuthError`           | `ConcordexAuthException`                 | `ConcordexAuthException`                |
-| `PermissionError`    | `PermissionError`   | `PermissionError`     | `ConcordexPermissionException`           | `ConcordexPermissionException`          |
-| `ValidationError`    | `ValidationError`   | `ValidationError`     | `ConcordexValidationException`           | `ConcordexValidationException`          |
-| `ServerError`        | `ServerError`       | `ServerError`         | `ConcordexServerException`               | `ConcordexServerException`              |
+| `DMZAgentError`     | `DMZAgentError`    | `DMZAgentError`      | `DMZAgentException`                     | `DMZAgentException`                    |
+| `AuthError`          | `AuthError`         | `AuthError`           | `DMZAgentAuthException`                 | `DMZAgentAuthException`                |
+| `PermissionError`    | `PermissionError`   | `PermissionError`     | `DMZAgentPermissionException`           | `DMZAgentPermissionException`          |
+| `ValidationError`    | `ValidationError`   | `ValidationError`     | `DMZAgentValidationException`           | `DMZAgentValidationException`          |
+| `ServerError`        | `ServerError`       | `ServerError`         | `DMZAgentServerException`               | `DMZAgentServerException`              |
 | `CBOpenError`        | `CBOpenError`       | `CBOpenError`         | `CircuitBreakerOpenException`            | `CircuitBreakerOpenException`           |
 
 C# and Java rename to the `…Exception` convention idiomatic to their
@@ -557,9 +894,59 @@ how the SDK exposes the enum.
 
 ---
 
-## 9. Webhook signature verification
+## 9. Webhook events
 
-Concordex outbound webhooks are signed with HMAC-SHA256 using the
+DMZAgent delivers events to registered webhooks for outcomes and
+triage/review notifications. Every webhook payload is signed (see §10).
+
+### 9.1 Event envelope
+
+Every webhook POST carries:
+
+```json
+{
+  "specversion": "1.0",
+  "type": "review.opened",
+  "source": "/v1/reviews",
+  "id": "evt_uuid",
+  "time": "2026-06-10T12:00:00Z",
+  "datacontenttype": "application/json",
+  "data": { ... }
+}
+```
+
+All standard CloudEvents 1.0 attributes (`specversion`, `type`, `source`,
+`id`, `time`, `datacontenttype`) are present. The `data` payload shape
+depends on the event type.
+
+### 9.2 Event types
+
+| Type                 | When fired                        | `data` shape            |
+|----------------------|-----------------------------------|-------------------------|
+| `review.opened`      | A coordinate/review disposition created a new review | `ReviewEvent` (§7.6) |
+| `review.resolved`    | A human resolved or dismissed a review | `ReviewEvent` (§7.6) |
+| `review.updated`     | A review was claimed, escalated, or reinforced | `ReviewEvent` (§7.6) |
+| `outcome.completed`  | Per-workspace reasoning finished for a frame | `OutcomeEvent` |
+
+### 9.3 `OutcomeEvent`
+
+`data` shape for `outcome.completed` events:
+
+| Field             | Type                  | Notes                                          |
+|-------------------|-----------------------|------------------------------------------------|
+| `frame_id`        | string                | the frame that was reasoned                     |
+| `workspace_id`    | string                | workspace that produced this outcome            |
+| `subject_id`      | string                | subject that was reasoned                       |
+| `outcome`         | string                | per-workspace outcome                           |
+| `tags_fired`      | array<tag_fired>?     | tags that fired                                 |
+| `soul_version`    | integer?              | subject's soul version after reasoning         |
+| `ledger_index`    | integer?              | ledger index of the reasoning trace            |
+
+---
+
+## 10. Webhook signature verification
+
+DMZAgent outbound webhooks are signed with HMAC-SHA256 using the
 subscription's secret. Every SDK MUST expose a helper:
 
 ```
@@ -590,7 +977,7 @@ Canonical helper name in each language:
 
 ---
 
-## 10. Contract tests
+## 11. Contract tests
 
 Every SDK repository MUST contain a `spec-conformance.yml` GitHub
 Actions workflow that:
@@ -619,7 +1006,7 @@ for how the harness MUST be wired in each language.
 
 ---
 
-## 11. Versioning
+## 12. Versioning
 
 The `VERSION` file in this repo is the source of truth. Every SDK
 release tag matches this exactly.
@@ -631,19 +1018,19 @@ Post-1.0: MAJOR bumps for breaking changes only, with at least one
 MINOR-version deprecation cycle. The deprecation cycle MUST be
 documented in `CHANGELOG.md` of the spec repo before a MAJOR is cut.
 
-### 11.1 Spec version pinning
+### 12.1 Spec version pinning
 
 Each SDK pins to a spec version in its language-native manifest:
 
-- Python: `pyproject.toml` → `[tool.concordex] spec-version = "0.5.0"`
-- TypeScript: `package.json` → `"concordex": {"specVersion": "0.5.0"}`
-- C#: `Directory.Build.props` → `<ConcordexSpecVersion>0.5.0</ConcordexSpecVersion>`
-- Java: `pom.xml` → `<concordex.spec.version>0.5.0</concordex.spec.version>`
+- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.6.0"`
+- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.6.0"}`
+- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.6.0</DMZAgentSpecVersion>`
+- Java: `pom.xml` → `<dmzagent.spec.version>0.6.0</dmzagent.spec.version>`
 
 The SDK's CI MUST fail-loud if the pinned spec version doesn't match
 the version of the spec repo it checks out.
 
-### 11.2 Coordinated release
+### 12.2 Coordinated release
 
 The `promote.yml` workflow in this repo:
 
@@ -659,18 +1046,26 @@ The `promote.yml` workflow in this repo:
 
 ---
 
-## 12. Quick-start example (snake_case canonical)
+## 13. Quick-start example (snake_case canonical)
 
 ```text
-cx = Concordex(api_key="ck_…")
+cx = DMZAgent(api_key="ck_…")
 
-cx.subject_says(
-    agent_subject_id="user:ws:bot",
-    subject_id="user:ws:cust",
-    text="I want a refund.",
+# Ingest an event — returns immediately with accepted-only ack.
+ack = cx.capture(
+    subject_id="bot",
+    kind="subject_says",
+    subject_type="chat",
+    payload={"text": "I want a refund."},
 )
+print(ack.frame_id, ack.accepted, ack.n_workspaces)
 
-g = cx.check(subject_id="user:ws:bot")
+# Retrieve reasoning outcome — blocks until reasoning completes.
+outcome = cx.await_outcome(ack.frame_id, timeout=10.0)
+print(outcome.outcome, outcome.tags_fired)
+
+# Check circuit breaker before acting.
+g = cx.check(subject_id="bot")
 if not g.allow:
     return refuse(g.reason)
 ```
@@ -682,21 +1077,67 @@ language's idiomatic form.
 
 ## Appendix A — Subject and participant shapes
 
+### A.1 Subject ID format
+
+Subject IDs follow a canonical 4-part format:
+
+```
+subject:<division_id>:<subject_type>:<slug>
+```
+
+Where:
+
+| Segment        | Required | Notes                                                |
+|----------------|----------|------------------------------------------------------|
+| `subject`      | yes      | Literal prefix                                       |
+| `division_id`  | yes      | Division identifier, e.g. `div_abc`                  |
+| `subject_type` | no       | Classifies the subject: `chat` \| `sensor` \| `lead` \| `ticket` \| `journey`. Omit for legacy 3-part form. |
+| `slug`         | yes      | Unique-within-division slug, e.g. `bot`, `cust_456`  |
+
+The server stores the `subject_type` on the subject record and uses it
+to select the trace pattern (Appendix C) that governs trace grouping,
+completeness conditions, and deviation rules.
+
+On the wire, the server accepts any non-empty string. The SDK examples
+in this spec use bare slugs (`"bot"`, `"cust"`). Internally the server
+resolves them to the API key's division. Legacy formats (3-part
+`user:ws_xxx:bot`, 4-part `subject:div_abc:chat:bot`) are also
+accepted but not required.
+
+Examples:
+
+| Form       | Example                          | Use case                        |
+|------------|----------------------------------|---------------------------------|
+| Bare slug  | `bot`                            | Primary form — server resolves  |
+| 4-part     | `subject:div_abc:chat:bot`       | Explicit division + type        |
+| 3-part     | `user:ws_xxx:bot`                | Legacy — still accepted         |
+
+The SDK helper `subjectTypeFromSubjectId()` / `subject_type_from_subject_id()`
+extracts the type segment (or `null` / `None` when absent).
+
+### A.2 Participant shape
+
 ```json
 {
-  "subject_id": "user:ws_xxx:bot",
+  "subject_id": "subject:div_abc:chat:bot",
   "role":       "agent",
   "kind":       "agent",
+  "subject_type": "chat",
   "metadata":   {}
 }
 ```
 
-`role` is free-form (`agent`, `customer`, `observer`, `detected_person`,
-`counterparty`, `mentioned`, `system`, `service`, `other`, …).
-`kind` describes the substrate (`agent`, `human`, `sensor`, `service`,
-`other`).
+| Field          | Type   | Notes                                              |
+|----------------|--------|----------------------------------------------------|
+| `subject_id`   | string | Canonical subject id (4-part or 3-part)            |
+| `role`         | string | Free-form: `agent`, `customer`, `observer`, …     |
+| `kind`         | string | Substrate: `agent`, `human`, `sensor`, `service`, `other` |
+| `subject_type` | string?| Classifier: `chat`, `sensor`, `lead`, `ticket`, `journey` |
+| `metadata`     | object | Free-form metadata                                 |
 
-Both default to `"other"` when omitted.
+`role` and `kind` default to `"other"` when omitted.
+`subject_type` is optional; when present it overrides server-side
+inference from the subject id.
 
 ## Appendix B — Wire compatibility commitments
 
@@ -715,3 +1156,66 @@ Server changes that do NOT constitute a breaking change:
   the raw string).
 - Adding a new endpoint.
 - Loosening a validation.
+
+---
+
+## Appendix C — Trace & Notification patterns
+
+This appendix describes server-side concepts that affect ingestion
+behavior and notification delivery. SDKs do not expose methods to
+manipulate these patterns directly (use the operator API or dashboard),
+but SDK callers benefit from understanding them.
+
+### C.1 Trace patterns
+
+A **trace pattern** defines how frames are grouped into traces for a
+given subject type. When `reasoning_mode` is `per_trace` (§1.7), frames
+are deferred until the trace closes, then reasoned as a batch.
+
+Each subject type has a default pattern:
+
+| Type      | Grouping strategy   | Trace closes when…                                |
+|-----------|---------------------|---------------------------------------------------|
+| `chat`    | `session`           | No new frame arrives within the session timeout   |
+| `sensor`  | `temporal_window`   | A fixed time window expires                       |
+| `lead`    | `workflow_stage`    | The lead transitions to a new stage               |
+| `ticket`  | `workflow_stage`    | The ticket transitions to a new stage             |
+| `journey` | `workflow_stage`    | A terminal stage is reached                       |
+
+Workspaces may override the default pattern for a subject type. Custom
+patterns are configured through the operator dashboard (not via the SDK).
+
+When a trace closes:
+
+1. The assigned frames are locked from further ingestion.
+2. `reason_over_trace()` runs one reasoning pass over every frame in the
+   trace (the dedicated trace queue).
+3. Deviations detected during reasoning trigger notification dispatch
+   via notification patterns (§C.2).
+4. Each frame in the trace becomes available via `await_outcome()`.
+
+### C.2 Notification patterns
+
+A **notification pattern** maps a triggering event (deviation detection,
+stage stuck, SLA breach, churn risk) to delivery channels (in-app, SMS,
+WhatsApp, webhook) with per-pattern deduplication, severity gating, and
+template rendering.
+
+Built-in patterns:
+
+| Pattern name   | Trigger                              | Default channels       |
+|----------------|--------------------------------------|------------------------|
+| `deviation`    | Any deviation detected during        | in-app                 |
+|                | trace-level reasoning                |                        |
+| `stage_stuck`  | Subject remains in a stage past its  | in-app, webhook        |
+|                | expected duration                    |                        |
+| `sla_breach`   | SLA threshold exceeded for a         | in-app, SMS, webhook   |
+|                | ticket or lead                       |                        |
+| `churn_risk`   | Churn-risk score crosses threshold   | in-app, WhatsApp, SMS  |
+
+Workspaces may install custom notification patterns with their own
+trigger conditions, channel routing, and templates. Custom patterns
+are configured through the operator dashboard.
+
+Notification dispatch is **non-blocking**: patterns matching a detected
+deviation fire asynchronously after trace reasoning completes.

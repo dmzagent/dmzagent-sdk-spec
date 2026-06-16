@@ -53,7 +53,7 @@
       "body": "i am a teapot",
       "method": "subject_says",
       "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
-      "expected_exception": "ConcordexError",
+      "expected_exception": "DMZAgentError",
       "expected_status_code": 418
     },
     {

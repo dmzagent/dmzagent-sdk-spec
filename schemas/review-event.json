@@ -1,0 +1,23 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/review-event.json",
+  "title": "ReviewEvent",
+  "description": "Webhook payload for triage/review events delivered via the coordinate lane.",
+  "type": "object",
+  "required": ["event_id", "type", "review_id", "subject_id", "tag_id", "level", "status", "tier", "workspace_id", "occurred_at"],
+  "properties": {
+    "event_id":       { "type": "string" },
+    "type":           { "type": "string", "enum": ["review.opened", "review.resolved", "review.updated"] },
+    "review_id":      { "type": "string" },
+    "subject_id":     { "type": "string" },
+    "tag_id":         { "type": "string" },
+    "level":          { "type": "string", "enum": ["review", "escalate"] },
+    "status":         { "type": "string", "enum": ["open", "resolved", "dismissed", "accepted"] },
+    "tier":           { "type": "string", "enum": ["workspace", "division", "vendor"] },
+    "decision":       { "type": "string" },
+    "workspace_id":   { "type": "string" },
+    "division_id":    { "type": "string" },
+    "frame_id":       { "type": "string" },
+    "occurred_at":    { "type": "string" }
+  }
+}

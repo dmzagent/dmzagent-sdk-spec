@@ -1,0 +1,11 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/division-config-response.json",
+  "title": "DivisionConfig",
+  "description": "A division's JSON configuration blob.",
+  "type": "object",
+  "required": ["config"],
+  "properties": {
+    "config": { "type": "object" }
+  }
+}

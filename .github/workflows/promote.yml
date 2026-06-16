@@ -1,6 +1,6 @@
 name: Promote SDK Release
 
-# Coordinated release of every Concordex SDK at a single spec version.
+# Coordinated release of every DMZAgent SDK at a single spec version.
 #
 # Trigger: push a `v<version>` tag to this repo (matching VERSION).
 # Sequence:
@@ -31,10 +31,10 @@ permissions:
 
 env:
   SDK_REPOS: |
-    praeceptor-thesis/concordex-sdk-python
-    praeceptor-thesis/concordex-sdk-typescript
-    praeceptor-thesis/concordex-sdk-csharp
-    praeceptor-thesis/concordex-sdk-java
+    praeceptor-thesis/dmzagent-sdk-python
+    praeceptor-thesis/dmzagent-sdk-typescript
+    praeceptor-thesis/dmzagent-sdk-csharp
+    praeceptor-thesis/dmzagent-sdk-java
 
 jobs:
   resolve-version:
@@ -64,10 +64,10 @@ jobs:
       fail-fast: false
       matrix:
         sdk:
-          - concordex-sdk-python
-          - concordex-sdk-typescript
-          - concordex-sdk-csharp
-          - concordex-sdk-java
+          - dmzagent-sdk-python
+          - dmzagent-sdk-typescript
+          - dmzagent-sdk-csharp
+          - dmzagent-sdk-java
     steps:
       - name: Verify release branch exists in ${{ matrix.sdk }}
         env:
@@ -100,10 +100,10 @@ jobs:
       fail-fast: false
       matrix:
         sdk:
-          - concordex-sdk-python
-          - concordex-sdk-typescript
-          - concordex-sdk-csharp
-          - concordex-sdk-java
+          - dmzagent-sdk-python
+          - dmzagent-sdk-typescript
+          - dmzagent-sdk-csharp
+          - dmzagent-sdk-java
     steps:
       - name: Dispatch publish to ${{ matrix.sdk }}
         env:
@@ -130,19 +130,19 @@ jobs:
           POLLED_PYPI=0; POLLED_NPM=0; POLLED_NUGET=0; POLLED_MAVEN=0
           while [ "$(date +%s)" -lt "$DEADLINE" ]; do
             if [ "$POLLED_PYPI" -eq 0 ] && curl -sf -o /dev/null \
-              "https://pypi.org/pypi/concordex/${VERSION}/json"; then
+              "https://pypi.org/pypi/dmzagent/${VERSION}/json"; then
               echo "pypi: confirmed"; POLLED_PYPI=1
             fi
             if [ "$POLLED_NPM" -eq 0 ] && curl -sf -o /dev/null \
-              "https://registry.npmjs.org/@concordex/sdk/${VERSION}"; then
+              "https://registry.npmjs.org/@dmzagent/sdk/${VERSION}"; then
               echo "npm: confirmed"; POLLED_NPM=1
             fi
             if [ "$POLLED_NUGET" -eq 0 ] && curl -sf -o /dev/null \
-              "https://api.nuget.org/v3-flatcontainer/concordex.sdk/${VERSION}/concordex.sdk.${VERSION}.nupkg"; then
+              "https://api.nuget.org/v3-flatcontainer/dmzagent.sdk/${VERSION}/dmzagent.sdk.${VERSION}.nupkg"; then
               echo "nuget: confirmed"; POLLED_NUGET=1
             fi
             if [ "$POLLED_MAVEN" -eq 0 ] && curl -sf -o /dev/null \
-              "https://repo1.maven.org/maven2/dev/concordex/concordex-sdk/${VERSION}/concordex-sdk-${VERSION}.pom"; then
+              "https://repo1.maven.org/maven2/dev/dmzagent/dmzagent-sdk/${VERSION}/dmzagent-sdk-${VERSION}.pom"; then
               echo "maven: confirmed"; POLLED_MAVEN=1
             fi
             if [ "$POLLED_PYPI" -eq 1 ] && [ "$POLLED_NPM" -eq 1 ] \
@@ -182,6 +182,6 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           gh issue create \
-            --repo praeceptor-thesis/concordex-sdk-spec \
+            --repo praeceptor-thesis/dmzagent-sdk-spec \
             --title "[yank] v${VERSION} partial publish — manual cleanup required" \
-            --body "Promotion failed. Some registries may have accepted the publish; others did not.\n\nYank PyPI: \`pip yank concordex==${VERSION}\` via maintainer.\nDeprecate npm: \`npm deprecate @concordex/sdk@${VERSION} 'yanked: partial publish'\`.\nNuGet: unlist via portal (NuGet has no delete after retention).\nMaven Central: file a ticket — yanks are manual."
+            --body "Promotion failed. Some registries may have accepted the publish; others did not.\n\nYank PyPI: \`pip yank dmzagent==${VERSION}\` via maintainer.\nDeprecate npm: \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`.\nNuGet: unlist via portal (NuGet has no delete after retention).\nMaven Central: file a ticket — yanks are manual."

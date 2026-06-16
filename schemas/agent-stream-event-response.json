@@ -1,25 +1,16 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://spec.concordex.dev/schemas/agent-stream-event-response.json",
+  "$id": "https://spec.dmzagent.com/schemas/agent-stream-event-response.json",
   "title": "AgentStreamEventResponse",
-  "description": "Response body for POST /v1/agent-stream/event. Sync mode populates the rich envelope; async mode returns only interaction_id + subjects + queued=true.",
+  "description": "Response body for POST /v1/agent-stream/event. Accepted-only async ack — frame ingested and enqueued for background fan-out reasoning.",
   "type": "object",
   "required": ["interaction_id"],
   "properties": {
     "interaction_id":   { "type": "string" },
     "subjects":         { "type": "array",   "items": { "type": "string" } },
-    "queued":           { "type": "boolean" },
     "frame_id":         { "type": "string" },
-    "subject_id":       { "type": "string" },
-    "outcome": {
-      "type": "string",
-      "enum": ["scored", "tagged", "no_tags_fired", "rejected", "error"]
-    },
-    "triage_decision":  { "type": "string", "enum": ["deep", "shallow"] },
-    "tags_fired":       { "type": "array",   "items": { "type": "string" } },
-    "scored_by_canons": { "type": "array",   "items": { "type": "string" } },
-    "soul_version":     { "type": "integer" },
-    "ledger_index":     { "type": "integer" },
+    "accepted":         { "type": "boolean" },
+    "n_workspaces":     { "type": "integer" },
     "follow_my_data":   { "type": "string" }
   }
 }

@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://spec.concordex.dev/schemas/cb-check-request.json",
+  "$id": "https://spec.dmzagent.com/schemas/cb-check-request.json",
   "title": "CBCheckRequest",
   "description": "Request body for POST /v1/cb/check",
   "type": "object",

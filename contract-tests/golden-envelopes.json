@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.5.0",
+  "$schema_version": "0.6.0",
   "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys — SDK runners translate args to their idiomatic naming via §8 of sdk-spec.md.",
   "fixtures": [
     {
@@ -16,7 +16,8 @@
         "agent_subject_id": "user:ws_test:bot",
         "payload": { "text": "I want a refund." },
         "interaction_kind": "chat_session",
-        "speaker_subject_id": "user:ws_test:cust"
+        "speaker_subject_id": "user:ws_test:cust",
+        "subject_type": "sensor"
       }
     },
     {
@@ -39,11 +40,12 @@
         "payload": { "text": "Hi." },
         "interaction_id": "int_abc",
         "interaction_kind": "chat_session",
+        "speaker_subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
         "subjects": [
           { "subject_id": "user:ws_test:bot",  "role": "agent",    "kind": "agent" },
           { "subject_id": "user:ws_test:cust", "role": "customer", "kind": "human" }
-        ],
-        "speaker_subject_id": "user:ws_test:cust"
+        ]
       }
     },
     {
@@ -61,7 +63,8 @@
         "payload": { "tool": "refund.issue", "args": { "amount": 9900, "currency": "usd" } },
         "interaction_kind": "chat_session",
         "speaker_subject_id": "user:ws_test:bot",
-        "speaker_role": "agent"
+        "speaker_role": "agent",
+        "subject_type": "sensor"
       }
     },
     {
@@ -78,7 +81,8 @@
         "agent_subject_id": "user:ws_test:bot",
         "payload": { "tool": "refund.issue", "result": { "refund_id": "re_123", "status": "succeeded" } },
         "interaction_kind": "chat_session",
-        "speaker_subject_id": "user:ws_test:bot"
+        "speaker_subject_id": "user:ws_test:bot",
+        "subject_type": "sensor"
       }
     },
     {
@@ -97,6 +101,7 @@
         "agent_subject_id": "user:ws_test:sensor",
         "payload": { "kind": "video_keyframe", "frame_index": 42 },
         "interaction_kind": "chat_session",
+        "subject_type": "sensor",
         "subjects": [
           { "subject_id": "user:ws_test:sensor", "role": "service", "kind": "sensor" }
         ]

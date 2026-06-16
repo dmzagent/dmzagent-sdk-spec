@@ -19,7 +19,7 @@ A runner exists to prove three things, in this order:
 
 ### Step 1: Pin the spec tag
 
-The SDK repo MUST check out a specific tag of `concordex-sdk-spec` in
+The SDK repo MUST check out a specific tag of `dmzagent-sdk-spec` in
 CI. The pinned tag MUST match the spec version recorded in the SDK's
 language-native manifest (see §11.1 of `sdk-spec.md`).
 
@@ -135,5 +135,5 @@ The SDK repo's `spec-conformance.yml` workflow MUST:
 5. Set the GitHub status check `spec-conformance/<spec-version>` to
    success or failure.
 
-The promote workflow in `concordex-sdk-spec/.github/workflows/promote.yml`
+The promote workflow in `dmzagent-sdk-spec/.github/workflows/promote.yml`
 verifies this status before dispatching `publish.yml`.

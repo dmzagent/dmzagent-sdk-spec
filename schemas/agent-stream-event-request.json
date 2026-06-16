@@ -1,6 +1,6 @@
 {
   "$schema": "https://json-schema.org/draft/2020-12/schema",
-  "$id": "https://spec.concordex.dev/schemas/agent-stream-event-request.json",
+  "$id": "https://spec.dmzagent.com/schemas/agent-stream-event-request.json",
   "title": "AgentStreamEventRequest",
   "description": "Request body for POST /v1/agent-stream/event",
   "type": "object",

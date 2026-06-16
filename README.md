@@ -1,8 +1,8 @@
-# concordex-sdk-spec
+# dmzagent-sdk-spec
 
-**The canonical wire contract for every Concordex SDK.**
+**The canonical wire contract for every DMZAgent SDK.**
 
-This repository is the source of truth for what a Concordex SDK is. Every
+This repository is the source of truth for what a DMZAgent SDK is. Every
 language binding — Python, TypeScript, C#, Java — implements the same
 surface defined here, gated by the same contract test corpus, released
 under the same semantic version.
@@ -26,8 +26,8 @@ There is no runtime code in this repo. It contains:
 1. A change lands here (new field, new endpoint, new error code).
 2. `VERSION` is bumped.
 3. A spec tag `v<version>` is pushed.
-4. Each SDK repo (`concordex-sdk-python`, `concordex-sdk-typescript`,
-   `concordex-sdk-csharp`, `concordex-sdk-java`) opens a PR that pins to
+4. Each SDK repo (`dmzagent-sdk-python`, `dmzagent-sdk-typescript`,
+   `dmzagent-sdk-csharp`, `dmzagent-sdk-java`) opens a PR that pins to
    the new spec tag and implements any new surface.
 5. Each SDK repo's `spec-conformance.yml` workflow runs the contract test
    corpus from `contract-tests/` against its build. Red = blocks the
@@ -47,10 +47,10 @@ implements it.
 
 | Repo                          | Language    | Registry         |
 |-------------------------------|-------------|------------------|
-| concordex-sdk-python          | Python      | PyPI             |
-| concordex-sdk-typescript      | TypeScript  | npm              |
-| concordex-sdk-csharp          | C#          | NuGet            |
-| concordex-sdk-java            | Java        | Maven Central    |
+| dmzagent-sdk-python          | Python      | PyPI             |
+| dmzagent-sdk-typescript      | TypeScript  | npm              |
+| dmzagent-sdk-csharp          | C#          | NuGet            |
+| dmzagent-sdk-java            | Java        | Maven Central    |
 
 ## Versioning
 
