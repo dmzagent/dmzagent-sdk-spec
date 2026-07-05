@@ -7,7 +7,7 @@
       "status": 400,
       "body": { "detail": "kind must be one of ..." },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "ValidationError",
       "expected_status_code": 400
     },
@@ -16,7 +16,7 @@
       "status": 401,
       "body": { "detail": "invalid api key" },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "AuthError",
       "expected_status_code": 401
     },
@@ -25,7 +25,7 @@
       "status": 403,
       "body": { "detail": "scope not granted" },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "PermissionError",
       "expected_status_code": 403
     },
@@ -34,7 +34,7 @@
       "status": 500,
       "body": { "detail": "internal error" },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "ServerError",
       "expected_status_code": 500
     },
@@ -43,7 +43,7 @@
       "status": 503,
       "body": { "detail": "upstream unavailable" },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "ServerError",
       "expected_status_code": 503
     },
@@ -52,7 +52,7 @@
       "status": 418,
       "body": "i am a teapot",
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "text": "hi" },
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
       "expected_exception": "DMZAgentError",
       "expected_status_code": 418
     },
