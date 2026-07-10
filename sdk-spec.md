@@ -947,7 +947,11 @@ depends on the event type.
 ## 10. Webhook signature verification
 
 DMZAgent outbound webhooks are signed with HMAC-SHA256 using the
-subscription's secret. Every SDK MUST expose a helper:
+subscription's secret. The signature rides the **`X-DMZAgent-Signature`**
+header (value `t=<unix>,v1=<hex>`); the retired **`X-Concordex-Signature`**
+header carries the same value for a deprecation window (back-compat, removed
+post-launch). Verifiers take the header **value**, so they are unaffected by
+the header-name transition. Every SDK MUST expose a helper:
 
 ```
 verify_webhook_signature(payload, signature_header, secret, tolerance_seconds=300) → bool
