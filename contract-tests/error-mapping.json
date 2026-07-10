@@ -101,6 +101,36 @@
         "allow": false,
         "state": "open"
       }
+    },
+    {
+      "name": "422_unprocessable_validation",
+      "status": 422,
+      "body": { "detail": "logic evaluation failed for this event", "error": "validation_error" },
+      "method": "subject_says",
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "expected_exception": "ValidationError",
+      "expected_status_code": 422
+    },
+    {
+      "name": "429_rate_limited_retry_after",
+      "status": 429,
+      "headers": { "Retry-After": "30" },
+      "body": { "detail": "rate cap reached (10/10 this window)", "error": "rate_limited" },
+      "method": "subject_says",
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "expected_exception": "RateLimitError",
+      "expected_status_code": 429,
+      "expected_retry_after": 30
+    },
+    {
+      "name": "429_rate_limited_no_header",
+      "status": 429,
+      "body": { "detail": "rate cap reached", "error": "rate_limited" },
+      "method": "subject_says",
+      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "expected_exception": "RateLimitError",
+      "expected_status_code": 429,
+      "expected_retry_after": null
     }
   ]
 }

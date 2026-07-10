@@ -7,6 +7,19 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+## [0.7.0] — 2026-07-10
+
+### Added
+- Error taxonomy (§3): `422 → ValidationError` (well-formed but
+  unprocessable — bad event / rulebook) and `429 → RateLimitError`, a new
+  canonical exception exposing `retryAfter` parsed from the `Retry-After`
+  header (`DMZAgentRateLimitException` in C#/Java). Previously both
+  statuses collapsed into the generic `DMZAgentError`.
+- `contract-tests/error-mapping.json`: fixtures `422_unprocessable_validation`,
+  `429_rate_limited_retry_after` (with a `headers` field runners MUST pass
+  through to the stubbed response, and an `expected_retry_after` assertion),
+  and `429_rate_limited_no_header` (`retryAfter` is `null`, never a guess).
+
 ## [0.6.0] — 2026-06-13
 
 ### Added

@@ -294,6 +294,8 @@ to a typed exception hierarchy:
 | 400    | `ValidationError`   | malformed payload                    |
 | 401    | `AuthError`         | API key missing / invalid / revoked  |
 | 403    | `PermissionError`   | key valid but lacks scope            |
+| 422    | `ValidationError`   | well-formed but unprocessable (bad event / rulebook) |
+| 429    | `RateLimitError`    | rate cap reached — retry after `Retry-After` |
 | 5xx    | `ServerError`       | transient — safe to retry            |
 | other  | `DMZAgentError`    | unexpected status                    |
 
@@ -306,6 +308,13 @@ Every exception MUST expose:
 - `message: string`
 - `statusCode: number | null`
 - `body: object | string | null`
+
+`RateLimitError` additionally exposes:
+
+- `retryAfter: number | null` — seconds until retrying can succeed,
+  parsed from the response's `Retry-After` header (delta-seconds form);
+  `null` when the header is absent or unparseable. SDKs MUST NOT sleep
+  or retry automatically — surface the value and let the caller decide.
 
 `CBOpenError` additionally exposes:
 
@@ -872,6 +881,7 @@ your SDK MUST expose.
 | `AuthError`          | `AuthError`         | `AuthError`           | `DMZAgentAuthException`                 | `DMZAgentAuthException`                |
 | `PermissionError`    | `PermissionError`   | `PermissionError`     | `DMZAgentPermissionException`           | `DMZAgentPermissionException`          |
 | `ValidationError`    | `ValidationError`   | `ValidationError`     | `DMZAgentValidationException`           | `DMZAgentValidationException`          |
+| `RateLimitError`     | `RateLimitError`    | `RateLimitError`      | `DMZAgentRateLimitException`            | `DMZAgentRateLimitException`           |
 | `ServerError`        | `ServerError`       | `ServerError`         | `DMZAgentServerException`               | `DMZAgentServerException`              |
 | `CBOpenError`        | `CBOpenError`       | `CBOpenError`         | `CircuitBreakerOpenException`            | `CircuitBreakerOpenException`           |
 
