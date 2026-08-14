@@ -160,6 +160,74 @@ jobs:
           print(f"naming map ok — {len(declared)} methods declared, all mapped")
           PY
 
+      - name: Validate openapi.json against the spec and the schemas
+        run: |
+          python <<'PY'
+          import json, pathlib, re, sys
+
+          root = pathlib.Path(".")
+          doc = json.loads((root / "openapi.json").read_text())
+          fails = []
+
+          refs = []
+          def walk(n):
+              if isinstance(n, dict):
+                  for k, v in n.items():
+                      if k == "$ref" and isinstance(v, str): refs.append(v)
+                      else: walk(v)
+              elif isinstance(n, list):
+                  for i in n: walk(i)
+          walk(doc)
+
+          # Every external $ref points at a schema file that exists and parses.
+          ext = sorted({r for r in refs if not r.startswith("#")})
+          for r in ext:
+              p = (root / r)
+              if not p.exists():
+                  fails.append(f"openapi.json: $ref {r} has no file")
+              else:
+                  json.loads(p.read_text())
+
+          # Every internal $ref resolves.
+          for r in sorted({r for r in refs if r.startswith("#")}):
+              node = doc
+              for part in r.lstrip("#/").split("/"):
+                  if not isinstance(node, dict) or part not in node:
+                      fails.append(f"openapi.json: dangling $ref {r}")
+                      break
+                  node = node[part]
+
+          # The document and schemas/ describe the same corpus — a schema added
+          # without being wired in is a contract nobody can discover, and a ref
+          # to an absent file is a contract nobody can read.
+          on_disk = {p.name for p in (root / "schemas").glob("*.json")}
+          wired = {r.split("/")[-1] for r in ext}
+          if on_disk - wired:
+              fails.append(f"schemas not referenced by openapi.json: {sorted(on_disk - wired)}")
+          if wired - on_disk:
+              fails.append(f"openapi.json references absent schemas: {sorted(wired - on_disk)}")
+
+          # The endpoint set matches §2 of the spec exactly, in both directions.
+          spec = (root / "sdk-spec.md").read_text()
+          declared = set(re.findall(r"^### 2\.\d+ (GET|PUT|POST|DELETE) (\S+)", spec, re.M))
+          documented = {(m.upper(), path) for path, item in doc["paths"].items()
+                        for m in item if m in ("get", "put", "post", "delete")}
+          for missing in sorted(declared - documented):
+              fails.append(f"sdk-spec.md §2 declares {missing[0]} {missing[1]}, openapi.json omits it")
+          for extra in sorted(documented - declared):
+              fails.append(f"openapi.json documents {extra[0]} {extra[1]}, sdk-spec.md §2 does not")
+
+          version = (root / "VERSION").read_text().strip()
+          if doc["info"]["version"] != version:
+              fails.append(f"openapi.json info.version {doc['info']['version']} != VERSION {version}")
+
+          if fails:
+              print("\n".join(f"::error::{m}" for m in fails))
+              sys.exit(1)
+          print(f"openapi.json ok — {len(doc['paths'])} paths, {len(documented)} operations, "
+                f"{len(ext)} schema refs, {len(doc.get('webhooks', {}))} webhooks")
+          PY
+
       - name: Verify promote.yml lists the four canonical SDK repos
         run: |
           python <<'PY'
