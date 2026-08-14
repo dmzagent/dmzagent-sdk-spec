@@ -114,9 +114,13 @@ jobs:
           # ---- error-mapping.json ----
           em = json.loads((root / "error-mapping.json").read_text())
           assert "fixtures" in em, "error-mapping missing fixtures"
+          # Keep in step with the §3 canonical-type table. RateLimitError
+          # was added to that table and to the corpus without landing here,
+          # which failed every run on this branch.
           allowed_exceptions = {
               "ValidationError", "AuthError", "PermissionError",
-              "ServerError", "DMZAgentError", "CBOpenError", None,
+              "RateLimitError", "ServerError", "DMZAgentError",
+              "CBOpenError", None,
               # Alias the corpus uses for "either ValidationError OR
               # the language's idiomatic argument exception" — see
               # runner-spec.md §error-mapping.
