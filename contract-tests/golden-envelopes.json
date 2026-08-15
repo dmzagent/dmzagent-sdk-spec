@@ -8,6 +8,7 @@
       "args": {
         "agent_subject_id": "user:ws_test:bot",
         "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
         "text": "I want a refund."
       },
       "expected_path": "/v1/agent-stream/event",
@@ -26,6 +27,7 @@
       "args": {
         "agent_subject_id": "user:ws_test:bot",
         "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
         "text": "Hi.",
         "interaction_id": "int_abc",
         "subjects": [
@@ -53,6 +55,7 @@
       "method": "tool_call",
       "args": {
         "subject_id": "user:ws_test:bot",
+        "subject_type": "sensor",
         "tool": "refund.issue",
         "args": { "amount": 9900, "currency": "usd" }
       },
@@ -72,6 +75,7 @@
       "method": "tool_result",
       "args": {
         "subject_id": "user:ws_test:bot",
+        "subject_type": "sensor",
         "tool": "refund.issue",
         "result": { "refund_id": "re_123", "status": "succeeded" }
       },
@@ -90,6 +94,7 @@
       "method": "observation",
       "args": {
         "agent_subject_id": "user:ws_test:sensor",
+        "subject_type": "sensor",
         "subjects": [
           { "subject_id": "user:ws_test:sensor", "role": "service", "kind": "sensor" }
         ],
@@ -136,7 +141,7 @@
     {
       "name": "emit_event_unknown_kind",
       "method": "emit_event",
-      "args": { "kind": "nonsense", "agent_subject_id": "user:ws_test:bot" },
+      "args": { "kind": "nonsense", "agent_subject_id": "user:ws_test:bot", "subject_type": "sensor" },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "kind"
     },
