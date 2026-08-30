@@ -178,16 +178,54 @@ jobs:
             --prerelease=false
 
   yank-on-failure:
-    if: failure()
-    needs: [resolve-version, verify-registries]
+    # Only when a publish was actually ATTEMPTED. This was a bare
+    # `if: failure()`, so it fired on any failed run — including one where
+    # verify-conformance stopped the release and dispatch-publish never ran.
+    # The v0.8.0 tag proved it: nothing was published, and this job still
+    # tried to raise "partial publish — manual cleanup required", telling a
+    # maintainer to go yank packages from four registries that had never
+    # received them. A false yank alarm is worse than no alarm, because it
+    # arrives exactly when someone is under pressure and inclined to act.
+    #
+    # dispatch-publish is 'skipped' when the gate held and 'failure' when it
+    # dispatched some repos but not all — the latter IS a yank case, so the
+    # test is against 'skipped' rather than for 'success'.
+    needs: [resolve-version, dispatch-publish, verify-registries]
+    if: failure() && needs.dispatch-publish.result != 'skipped'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The workflow-level default is contents:read only, so creating the
+      # issue needs this explicitly. Scoped to the job, not the workflow.
+      issues: write
     steps:
       - name: Open issue for coordinated yank
         env:
-          GH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
+          # GH_DISPATCH_TOKEN is a PAT needed for CROSS-repo dispatch. This
+          # issue is filed in THIS repo, so the job token is sufficient and
+          # the alert no longer disappears when the PAT is unset — which is
+          # how it failed on the v0.8.0 tag (GH_TOKEN empty, gh exit 4).
+          GH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN || github.token }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
+          # Written to a file rather than passed inline: the previous --body
+          # was a double-quoted bash string containing \n, which bash does not
+          # expand and gh does not interpret, so the issue would have rendered
+          # as one line with literal backslash-n throughout.
+          cat > /tmp/yank-body.md <<EOF
+          Promotion of spec v${VERSION} failed **after** publish was dispatched.
+          Some registries may have accepted the publish; others did not.
+
+          Verify each, then yank or deprecate whatever landed:
+
+          - **PyPI** — \`pip yank dmzagent==${VERSION}\` (maintainer account)
+          - **npm** — \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`
+          - **NuGet** — unlist via the portal; NuGet has no delete after retention
+          - **Maven Central** — file a ticket, yanks are manual
+
+          Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
+          EOF
           gh issue create \
             --repo dmzagent/dmzagent-sdk-spec \
             --title "[yank] v${VERSION} partial publish — manual cleanup required" \
-            --body "Promotion failed. Some registries may have accepted the publish; others did not.\n\nYank PyPI: \`pip yank dmzagent==${VERSION}\` via maintainer.\nDeprecate npm: \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`.\nNuGet: unlist via portal (NuGet has no delete after retention).\nMaven Central: file a ticket — yanks are manual."
+            --body-file /tmp/yank-body.md
