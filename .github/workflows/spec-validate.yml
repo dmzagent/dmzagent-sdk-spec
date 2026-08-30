@@ -75,7 +75,7 @@ jobs:
       - name: Validate corpus shape
         run: |
           python <<'PY'
-          import json, sys, pathlib
+          import json, re, sys, pathlib
 
           root = pathlib.Path("contract-tests")
           fails = []
@@ -114,18 +114,38 @@ jobs:
           # ---- error-mapping.json ----
           em = json.loads((root / "error-mapping.json").read_text())
           assert "fixtures" in em, "error-mapping missing fixtures"
-          # Keep in step with the §3 canonical-type table. RateLimitError
-          # was added to that table and to the corpus without landing here,
-          # which failed every run on this branch.
-          allowed_exceptions = {
-              "ValidationError", "AuthError", "PermissionError",
-              "RateLimitError", "ServerError", "DMZAgentError",
-              "CBOpenError", None,
+          # Derived from the §8.5 naming-map table in sdk-spec.md rather
+          # than hardcoded. This list was hardcoded twice and went stale
+          # twice — RateLimitError in 0.7.0, ConflictError in 0.8.0 — each
+          # time failing every run until someone edited this file. Reading
+          # the canonical column means adding a row to §8.5 is the only
+          # step, and a corpus fixture naming an exception the spec does
+          # not define still fails, which is the check worth keeping.
+          spec_md = (root.parent / "sdk-spec.md").read_text()
+          section = spec_md.split("### 8.5 Exceptions", 1)
+          if len(section) != 2:
+              fails.append("sdk-spec.md: no '### 8.5 Exceptions' section to derive exceptions from")
+              section = ["", ""]
+          body_85 = section[1].split("### 8.6", 1)[0]
+          canonical = set()
+          for line in body_85.splitlines():
+              line = line.strip()
+              if not line.startswith("|"):
+                  continue
+              first = line.split("|")[1].strip()
+              m = re.fullmatch(r"`([A-Za-z]+)`", first)
+              if m:
+                  canonical.add(m.group(1))
+          if not canonical:
+              fails.append("sdk-spec.md §8.5: parsed zero canonical exception names")
+          allowed_exceptions = canonical | {
+              None,
               # Alias the corpus uses for "either ValidationError OR
               # the language's idiomatic argument exception" — see
               # runner-spec.md §error-mapping.
               "ValidationError_or_ArgumentError",
           }
+          print(f"§8.5 canonical exceptions: {sorted(canonical)}")
           for fx in em["fixtures"]:
               for k in ("name", "status", "body", "method"):
                   if k not in fx:
