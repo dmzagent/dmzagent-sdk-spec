@@ -7,6 +7,58 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+## [0.8.1] — 2026-08-30
+
+Closes the `await_outcome()` defect recorded as known at 0.8.0. The method
+was unusable in all four SDKs; it now has a specified, division-scoped
+contract and a termination condition.
+
+### Fixed
+- **`workspace_id` on `GET /v1/frames/{frame_id}/story` (§2.7) is now an
+  optional filter, not a required selector.** Ingestion is division-scoped:
+  the division is resolved from the subject, the frame fans out to every
+  workspace in it, and one trace is produced per workspace. Requiring one
+  workspace asked the caller to pick 1 of N perspectives — the wrong axis.
+  No SDK sent it, so every `await_outcome()` call took a 422. Omitted, the
+  whole division's traces are returned; supplied, the result narrows, so
+  existing callers are unaffected.
+- **`reasoning[].workspace_id` is now returned.** §7.3 has always required
+  it. The traces table has always carried the column; the query did not
+  select it, so callers received N traces with no way to tell the
+  perspectives apart.
+- **Ledger anchors resolve for canonical subject ids.** The walk derived
+  its workspace by string-splitting the subject and taking part 1 only when
+  it began with `user:`, so every `subject:<div>:<slug>` id resolved to
+  none, the walk was skipped, and `summary.ledger_anchored` reported false
+  for frames that were in fact anchored. Audit-log lookup had the same
+  legacy-only assumption and now gathers across the division.
+
+### Added
+- **Frame-level `outcome` (§2.7, §7.3)** — a fold over `reasoning[]` with
+  precedence `failed > held > applied > no_change > skipped`. Severity
+  first, so a caller testing for `applied` is not handed the more
+  favourable of two perspectives when another workspace errored. Computed
+  server-side because four SDKs folding independently is precisely the
+  drift this repository exists to prevent.
+- **`summary.complete` and `summary.workspace_count` (§2.7)** — the
+  termination condition for `await_outcome()`, tied to `n_workspaces` from
+  the ingest ack (§2.1). Previously there was nothing to poll on: Python
+  keyed on a top-level `outcome` that did not exist and always timed out,
+  while TypeScript, Java and C# returned the first response that parsed —
+  a half-finished story, since the endpoint answers successfully all the
+  way through the fan-out.
+- **`division_id` and `workspace_ids` (§2.7, §7.3)** — the scope the story
+  was rendered over.
+- **`held` added to the outcome enum (§7.3).** The server has emitted it
+  since ST-8; the spec listed four of the five values.
+- **`contract-tests/outcome-vectors.json`** — first fixtures covering
+  `await_outcome()`. §11.1 recorded that no fixture covered the method,
+  which is why the defect survived four implementations.
+
+### Notes
+- `workspace_id` remains accepted, so this is a patch release: no
+  request that worked at 0.8.0 changes meaning.
+
 ## [0.8.0] — 2026-08-30
 
 An audit of the specified surface against the server it describes and the

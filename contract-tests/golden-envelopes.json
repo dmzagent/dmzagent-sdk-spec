@@ -1,6 +1,6 @@
 {
-  "$schema_version": "0.8.0",
-  "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys \u2014 SDK runners translate args to their idiomatic naming via \u00a78 of sdk-spec.md. Subject ids appear in both documented forms (Appendix A): canonical `subject:<division_id>:<slug>` and its 4-part `subject:<division_id>:<type>:<slug>` variant, plus the deprecated legacy `user:<workspace_id>:<slug>`. Until 0.8.0 every fixture used the legacy form only, so all four SDKs were conformance-tested against the one shape that resolves to no division server-side. Keep at least one canonical fixture per method family.",
+  "$schema_version": "0.8.1",
+  "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys — SDK runners translate args to their idiomatic naming via §8 of sdk-spec.md. Subject ids appear in both documented forms (Appendix A): canonical `subject:<division_id>:<slug>` and its 4-part `subject:<division_id>:<type>:<slug>` variant, plus the deprecated legacy `user:<workspace_id>:<slug>`. Until 0.8.0 every fixture used the legacy form only, so all four SDKs were conformance-tested against the one shape that resolves to no division server-side. Keep at least one canonical fixture per method family.",
   "fixtures": [
     {
       "name": "subject_says_minimal",

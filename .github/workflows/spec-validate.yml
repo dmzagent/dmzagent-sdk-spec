@@ -153,13 +153,54 @@ jobs:
               if fx.get("expected_exception") not in allowed_exceptions:
                   fails.append(f"error_mapping/{fx['name']}: unknown exception {fx.get('expected_exception')}")
 
+          # ---- outcome-vectors.json ----
+          # Added 0.8.1 alongside await_outcome()'s fix. Validated here for
+          # the same reason the allowlist above is derived rather than
+          # hardcoded: a corpus file nothing checks is a corpus file that
+          # rots silently, which is how the conformance gate came to sit
+          # dead for two months.
+          ov = json.loads((root / "outcome-vectors.json").read_text())
+          assert "fixtures" in ov and "timeouts" in ov, "outcome-vectors missing keys"
+          for fx in ov["fixtures"]:
+              for k in ("name", "method", "args", "responses", "expected_request", "expected_result"):
+                  if k not in fx:
+                      fails.append(f"outcome_vectors/{fx.get('name','?')}: missing {k}")
+              if fx.get("method") != "await_outcome":
+                  fails.append(f"outcome_vectors/{fx['name']}: unexpected method {fx.get('method')}")
+              # The defect these vectors exist to prevent. A fixture that
+              # forgot to forbid workspace_id would pass against an SDK
+              # that still sends it.
+              forbidden = (fx.get("expected_request") or {}).get("forbidden_query_params") or []
+              if "workspace_id" not in forbidden:
+                  fails.append(
+                      f"outcome_vectors/{fx['name']}: expected_request must forbid "
+                      "workspace_id — the story endpoint is division-scoped (§2.7)")
+              for r in fx.get("responses") or []:
+                  if "status" not in r or "body" not in r:
+                      fails.append(f"outcome_vectors/{fx['name']}: response missing status/body")
+          for fx in ov["timeouts"]:
+              for k in ("name", "method", "args", "responses", "expected_exception"):
+                  if k not in fx:
+                      fails.append(f"outcome_timeouts/{fx.get('name','?')}: missing {k}")
+              if fx.get("expected_exception") not in allowed_exceptions:
+                  fails.append(f"outcome_timeouts/{fx['name']}: unknown exception {fx.get('expected_exception')}")
+
+          # ---- corpus schema_version tracks VERSION ----
+          version = (root.parent / "VERSION").read_text().strip()
+          for fname in ("golden-envelopes.json", "error-mapping.json", "outcome-vectors.json"):
+              sv_declared = json.loads((root / fname).read_text()).get("$schema_version")
+              if sv_declared != version:
+                  fails.append(f"{fname}: $schema_version {sv_declared} != VERSION {version}")
+
           if fails:
               print("\n".join(f"::error::{m}" for m in fails))
               sys.exit(1)
           print(f"corpora ok — {len(ge['fixtures'])} envelopes, "
                 f"{len(ge['validation_failures'])} validation failures, "
                 f"{len(sv['fixtures'])} signature vectors, "
-                f"{len(em['fixtures'])} error mappings")
+                f"{len(em['fixtures'])} error mappings, "
+                f"{len(ov['fixtures'])} outcome vectors, "
+                f"{len(ov['timeouts'])} outcome timeouts")
           PY
 
       - name: Verify naming map covers every public method
