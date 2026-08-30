@@ -328,6 +328,63 @@
           }
         }
       }
+    },
+    "/v1/frames/{frame_id}/story": {
+      "parameters": [
+        {
+          "name": "frame_id",
+          "in": "path",
+          "required": true,
+          "description": "As returned by EmitResult.frame_id.",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "workspace_id",
+          "in": "query",
+          "required": true,
+          "description": "Which workspace's perspective to render. Required: a frame fans out to n_workspaces workspaces and the ingestion response does not return a workspace id, so an SDK holding only frame_id cannot supply this \u2014 see the known defect in sdk-spec.md \u00a72.7.",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ],
+      "get": {
+        "tags": [
+          "frames"
+        ],
+        "operationId": "getFrameStory",
+        "summary": "Narrative lineage for a frame",
+        "description": "The endpoint await_outcome() polls and the target of the `follow_my_data` path returned by POST /v1/agent-stream/event. See sdk-spec.md \u00a72.7, including the recorded defect that await_outcome() cannot currently succeed against it.",
+        "responses": {
+          "200": {
+            "description": "Frame lineage.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/FrameStoryResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthError"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
     }
   },
   "webhooks": {
@@ -542,6 +599,84 @@
           },
           "error": {
             "type": "string"
+          }
+        }
+      },
+      "FrameStoryResponse": {
+        "type": "object",
+        "description": "Narrative lineage for one frame (sdk-spec.md \u00a72.7). Per-workspace reasoning traces live in `reasoning[]`, each carrying its own `outcome`; there is no top-level `outcome` key.",
+        "required": [
+          "frame_id",
+          "workspace_id"
+        ],
+        "properties": {
+          "frame_id": {
+            "type": "string"
+          },
+          "subject_id": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "occurred_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "ingested_at": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "format": "date-time"
+          },
+          "ingestion": {
+            "type": "object",
+            "description": "Connector instance and ingest job that produced the frame."
+          },
+          "frame": {
+            "type": "object",
+            "description": "The frame as submitted."
+          },
+          "reasoning": {
+            "type": "array",
+            "description": "One entry per workspace the frame fanned out to; each carries its own `outcome`.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "soul_changes": {
+            "type": "array",
+            "items": {
+              "type": "object"
+            }
+          },
+          "ledger": {
+            "type": "array",
+            "description": "Ledger anchors for the traces.",
+            "items": {
+              "type": "object"
+            }
+          },
+          "summary": {
+            "type": "object",
+            "properties": {
+              "trace_count": {
+                "type": "integer"
+              },
+              "tags_fired": {
+                "type": "integer"
+              },
+              "soul_versions": {
+                "type": "array",
+                "items": {
+                  "type": "array"
+                }
+              },
+              "ledger_anchored": {
+                "type": "boolean"
+              }
+            }
           }
         }
       }
