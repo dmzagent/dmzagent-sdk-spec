@@ -1,6 +1,6 @@
 {
-  "$schema_version": "0.6.0",
-  "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys — SDK runners translate args to their idiomatic naming via §8 of sdk-spec.md.",
+  "$schema_version": "0.8.0",
+  "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys \u2014 SDK runners translate args to their idiomatic naming via \u00a78 of sdk-spec.md. Subject ids appear in both documented forms (Appendix A): canonical `subject:<division_id>:<slug>` and its 4-part `subject:<division_id>:<type>:<slug>` variant, plus the deprecated legacy `user:<workspace_id>:<slug>`. Until 0.8.0 every fixture used the legacy form only, so all four SDKs were conformance-tested against the one shape that resolves to no division server-side. Keep at least one canonical fixture per method family.",
   "fixtures": [
     {
       "name": "subject_says_minimal",
@@ -15,7 +15,9 @@
       "expected_body": {
         "kind": "subject_says",
         "agent_subject_id": "user:ws_test:bot",
-        "payload": { "text": "I want a refund." },
+        "payload": {
+          "text": "I want a refund."
+        },
         "interaction_kind": "chat_session",
         "speaker_subject_id": "user:ws_test:cust",
         "subject_type": "sensor"
@@ -31,22 +33,85 @@
         "text": "Hi.",
         "interaction_id": "int_abc",
         "subjects": [
-          { "subject_id": "user:ws_test:bot",  "role": "agent",    "kind": "agent" },
-          { "subject_id": "user:ws_test:cust", "role": "customer", "kind": "human" }
+          {
+            "subject_id": "user:ws_test:bot",
+            "role": "agent",
+            "kind": "agent"
+          },
+          {
+            "subject_id": "user:ws_test:cust",
+            "role": "customer",
+            "kind": "human"
+          }
         ]
       },
       "expected_path": "/v1/agent-stream/event",
       "expected_body": {
         "kind": "subject_says",
         "agent_subject_id": "user:ws_test:bot",
-        "payload": { "text": "Hi." },
+        "payload": {
+          "text": "Hi."
+        },
         "interaction_id": "int_abc",
         "interaction_kind": "chat_session",
         "speaker_subject_id": "user:ws_test:cust",
         "subject_type": "sensor",
         "subjects": [
-          { "subject_id": "user:ws_test:bot",  "role": "agent",    "kind": "agent" },
-          { "subject_id": "user:ws_test:cust", "role": "customer", "kind": "human" }
+          {
+            "subject_id": "user:ws_test:bot",
+            "role": "agent",
+            "kind": "agent"
+          },
+          {
+            "subject_id": "user:ws_test:cust",
+            "role": "customer",
+            "kind": "human"
+          }
+        ]
+      }
+    },
+    {
+      "name": "subject_says_canonical_subject",
+      "method": "subject_says",
+      "args": {
+        "agent_subject_id": "subject:dv_acme:leasing-bot",
+        "subject_id": "subject:dv_acme:customer-anon",
+        "subject_type": "chat",
+        "text": "I want a refund.",
+        "subjects": [
+          {
+            "subject_id": "subject:dv_acme:leasing-bot",
+            "role": "agent",
+            "kind": "agent"
+          },
+          {
+            "subject_id": "subject:dv_acme:customer-anon",
+            "role": "customer",
+            "kind": "human"
+          }
+        ]
+      },
+      "expected_path": "/v1/agent-stream/event",
+      "expected_body": {
+        "kind": "subject_says",
+        "agent_subject_id": "subject:dv_acme:leasing-bot",
+        "payload": {
+          "text": "I want a refund."
+        },
+        "interaction_kind": "chat_session",
+        "speaker_subject_id": "subject:dv_acme:customer-anon",
+        "subject_type": "chat",
+        "subjects": [
+          {
+            "subject_id": "subject:dv_acme:leasing-bot",
+            "role": "agent",
+            "kind": "agent"
+          },
+          {
+            "subject_id": "subject:dv_acme:customer-anon",
+            "role": "customer",
+            "kind": "human"
+          }
         ]
       }
     },
@@ -57,13 +122,22 @@
         "subject_id": "user:ws_test:bot",
         "subject_type": "sensor",
         "tool": "refund.issue",
-        "args": { "amount": 9900, "currency": "usd" }
+        "args": {
+          "amount": 9900,
+          "currency": "usd"
+        }
       },
       "expected_path": "/v1/agent-stream/event",
       "expected_body": {
         "kind": "tool_call",
         "agent_subject_id": "user:ws_test:bot",
-        "payload": { "tool": "refund.issue", "args": { "amount": 9900, "currency": "usd" } },
+        "payload": {
+          "tool": "refund.issue",
+          "args": {
+            "amount": 9900,
+            "currency": "usd"
+          }
+        },
         "interaction_kind": "chat_session",
         "speaker_subject_id": "user:ws_test:bot",
         "speaker_role": "agent",
@@ -77,13 +151,22 @@
         "subject_id": "user:ws_test:bot",
         "subject_type": "sensor",
         "tool": "refund.issue",
-        "result": { "refund_id": "re_123", "status": "succeeded" }
+        "result": {
+          "refund_id": "re_123",
+          "status": "succeeded"
+        }
       },
       "expected_path": "/v1/agent-stream/event",
       "expected_body": {
         "kind": "tool_result",
         "agent_subject_id": "user:ws_test:bot",
-        "payload": { "tool": "refund.issue", "result": { "refund_id": "re_123", "status": "succeeded" } },
+        "payload": {
+          "tool": "refund.issue",
+          "result": {
+            "refund_id": "re_123",
+            "status": "succeeded"
+          }
+        },
         "interaction_kind": "chat_session",
         "speaker_subject_id": "user:ws_test:bot",
         "subject_type": "sensor"
@@ -96,19 +179,70 @@
         "agent_subject_id": "user:ws_test:sensor",
         "subject_type": "sensor",
         "subjects": [
-          { "subject_id": "user:ws_test:sensor", "role": "service", "kind": "sensor" }
+          {
+            "subject_id": "user:ws_test:sensor",
+            "role": "service",
+            "kind": "sensor"
+          }
         ],
-        "payload": { "kind": "video_keyframe", "frame_index": 42 }
+        "payload": {
+          "kind": "video_keyframe",
+          "frame_index": 42
+        }
       },
       "expected_path": "/v1/agent-stream/event",
       "expected_body": {
         "kind": "observation",
         "agent_subject_id": "user:ws_test:sensor",
-        "payload": { "kind": "video_keyframe", "frame_index": 42 },
+        "payload": {
+          "kind": "video_keyframe",
+          "frame_index": 42
+        },
         "interaction_kind": "chat_session",
         "subject_type": "sensor",
         "subjects": [
-          { "subject_id": "user:ws_test:sensor", "role": "service", "kind": "sensor" }
+          {
+            "subject_id": "user:ws_test:sensor",
+            "role": "service",
+            "kind": "sensor"
+          }
+        ]
+      }
+    },
+    {
+      "name": "observation_canonical_four_part_subject",
+      "method": "observation",
+      "args": {
+        "agent_subject_id": "subject:dv_acme:sensor:door-cam-3",
+        "subject_type": "sensor",
+        "subjects": [
+          {
+            "subject_id": "subject:dv_acme:sensor:door-cam-3",
+            "role": "service",
+            "kind": "sensor"
+          }
+        ],
+        "payload": {
+          "kind": "video_keyframe",
+          "frame_index": 42
+        }
+      },
+      "expected_path": "/v1/agent-stream/event",
+      "expected_body": {
+        "kind": "observation",
+        "agent_subject_id": "subject:dv_acme:sensor:door-cam-3",
+        "payload": {
+          "kind": "video_keyframe",
+          "frame_index": 42
+        },
+        "interaction_kind": "chat_session",
+        "subject_type": "sensor",
+        "subjects": [
+          {
+            "subject_id": "subject:dv_acme:sensor:door-cam-3",
+            "role": "service",
+            "kind": "sensor"
+          }
         ]
       }
     },
@@ -122,6 +256,18 @@
       "expected_body": {
         "scope": "subject",
         "scope_ref": "user:ws_test:bot"
+      }
+    },
+    {
+      "name": "check_canonical_subject",
+      "method": "check",
+      "args": {
+        "subject_id": "subject:dv_acme:leasing-bot"
+      },
+      "expected_path": "/v1/cb/check",
+      "expected_body": {
+        "scope": "subject",
+        "scope_ref": "subject:dv_acme:leasing-bot"
       }
     },
     {
@@ -141,7 +287,11 @@
     {
       "name": "emit_event_unknown_kind",
       "method": "emit_event",
-      "args": { "kind": "nonsense", "agent_subject_id": "user:ws_test:bot", "subject_type": "sensor" },
+      "args": {
+        "kind": "nonsense",
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_type": "sensor"
+      },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "kind"
     },
@@ -155,21 +305,28 @@
     {
       "name": "check_both_args",
       "method": "check",
-      "args": { "subject_id": "x", "interaction_id": "y" },
+      "args": {
+        "subject_id": "x",
+        "interaction_id": "y"
+      },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "exactly one"
     },
     {
       "name": "client_construct_missing_prefix",
       "method": "construct",
-      "args": { "api_key": "sk_wrong_prefix" },
+      "args": {
+        "api_key": "sk_wrong_prefix"
+      },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "ck_"
     },
     {
       "name": "client_construct_empty_key",
       "method": "construct",
-      "args": { "api_key": "" },
+      "args": {
+        "api_key": ""
+      },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "ck_"
     }
