@@ -2,15 +2,36 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://spec.dmzagent.com/schemas/agent-stream-event-response.json",
   "title": "AgentStreamEventResponse",
-  "description": "Response body for POST /v1/agent-stream/event. Accepted-only async ack — frame ingested and enqueued for background fan-out reasoning.",
+  "description": "Response body for POST /v1/agent-stream/event. Accepted-only async ack \u2014 frame ingested and enqueued for background fan-out reasoning.",
   "type": "object",
-  "required": ["interaction_id"],
+  "required": [
+    "interaction_id"
+  ],
   "properties": {
-    "interaction_id":   { "type": "string" },
-    "subjects":         { "type": "array",   "items": { "type": "string" } },
-    "frame_id":         { "type": "string" },
-    "accepted":         { "type": "boolean" },
-    "n_workspaces":     { "type": "integer" },
-    "follow_my_data":   { "type": "string" }
+    "interaction_id": {
+      "type": "string"
+    },
+    "subjects": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "frame_id": {
+      "type": "string"
+    },
+    "accepted": {
+      "type": "boolean"
+    },
+    "n_workspaces": {
+      "type": "integer"
+    },
+    "follow_my_data": {
+      "type": "string"
+    },
+    "livemode": {
+      "type": "boolean",
+      "description": "True when the request authenticated with a live key, false for a test key. Always present on a 200."
+    }
   }
 }

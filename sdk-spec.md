@@ -1,8 +1,8 @@
 # DMZAgent SDK Specification
 
-**Version:** see [`VERSION`](./VERSION) — currently `0.6.0`
+**Version:** see [`VERSION`](./VERSION) — currently `0.8.0`
 **Status:** pre-1.0 (MINOR bumps may include breaking wire changes)
-**Last updated:** 2026-06-13
+**Last updated:** 2026-08-30
 
 This document defines the public surface every DMZAgent SDK MUST
 implement. Every language binding — Python, TypeScript, C#, Java — is a
@@ -10,7 +10,7 @@ translation of this surface. Same constructor shape, same methods (under
 language-idiomatic naming), same return types, same error hierarchy,
 same wire protocol.
 
-A spec tag (`v0.5.0`) corresponds 1:1 to a release tag in every SDK
+A spec tag (`v0.8.0`) corresponds 1:1 to a release tag in every SDK
 repository. No SDK ships a version the spec hasn't blessed.
 
 ---
@@ -38,6 +38,29 @@ material as a secret in logs (redact or omit).
 Do NOT carry the dashboard session cookie. Do NOT set the legacy
 `X-DMZAgent-Key` header — deprecated and slated for removal in v1.0.
 
+#### Test mode and live mode
+
+Keys are issued in one of two modes, distinguished by the key material
+itself:
+
+| Prefix     | Mode | Data                                        |
+|------------|------|---------------------------------------------|
+| `ck_test_` | test | Written to test-mode storage; never billed  |
+| `ck_`      | live | Production data                             |
+
+The mode is a property of the key, not a request parameter — there is no
+header or field that switches it, and an SDK MUST NOT offer one. To move
+between modes, the caller changes the key.
+
+Every ingestion response carries `livemode` (§2.1) reflecting the mode
+the request was authenticated in. SDKs MUST surface it on `EmitResult`
+and `CaptureResult` (§7.1, §7.2) rather than discarding it: it is the
+only signal distinguishing test data from production data in a response,
+and a caller holding the wrong key otherwise has no way to notice.
+
+`Idempotency-Key` scope is namespaced per mode (§1.8), so the same key
+value used in test and in live does not collide.
+
 ### 1.3 Content-Type
 
 All request bodies are JSON-encoded. SDKs MUST set
@@ -51,8 +74,8 @@ SDKs MUST set:
 User-Agent: dmzagent-<language>/<spec-version>
 ```
 
-Examples: `dmzagent-python/0.6.0`, `dmzagent-typescript/0.6.0`,
-`dmzagent-csharp/0.6.0`, `dmzagent-java/0.6.0`. Optional suffix in the
+Examples: `dmzagent-python/0.8.0`, `dmzagent-typescript/0.8.0`,
+`dmzagent-csharp/0.8.0`, `dmzagent-java/0.8.0`. Optional suffix in the
 form `(<runtime-info>)` is permitted.
 
 ### 1.5 Timeout
@@ -98,6 +121,44 @@ division config endpoint.
 The `capture()` response is identical in both modes — `accepted: true`
 means the frame was stored, not that reasoning finished.
 
+### 1.8 Idempotency
+
+`POST /v1/agent-stream/event` accepts a caller-generated
+`Idempotency-Key` request header. It makes retrying a request safe: a
+retry that carries the same key does not create a second interaction,
+ingest a second frame, or trigger a second reasoning pass.
+
+```
+Idempotency-Key: <caller-generated unique string>
+```
+
+Server behaviour, which SDKs MUST NOT attempt to reimplement locally:
+
+| Situation                                    | Response                                        |
+|----------------------------------------------|-------------------------------------------------|
+| Key unseen                                   | Request proceeds normally; response is stored   |
+| Key seen, original completed                 | The stored response is replayed **verbatim**, including its original status code |
+| Key seen, original still in flight           | `409` → `ConflictError` (§3)                    |
+
+Scope is `(workspace, mode, key)`: the same key value is independent
+across workspaces, and independent between test and live mode (§1.2).
+
+An in-flight claim is held for 60 seconds. Past that the server presumes
+the original request died mid-flight and lets a retry reclaim the key,
+so a dropped connection does not strand a key.
+
+Requirements on SDKs:
+
+- The parameter MUST be optional and caller-supplied. An SDK MUST NOT
+  generate a key on the caller's behalf — a key auto-generated per call
+  is unique per call and therefore deduplicates nothing, while a key
+  derived from payload content would silently collapse two legitimately
+  distinct events that happen to be identical.
+- A replayed response is indistinguishable from the original at the
+  transport layer and MUST be returned as a normal result.
+- `409` MUST surface as `ConflictError`, not as a retry the SDK performs
+  itself. The caller decides whether to wait and retry.
+
 ---
 
 ## 2. Endpoints
@@ -105,6 +166,14 @@ means the frame was stored, not that reasoning finished.
 ### 2.1 POST /v1/agent-stream/event
 
 Emit one event into the agent stream.
+
+#### Request headers
+
+| Header            | Required | Notes                                          |
+|-------------------|----------|------------------------------------------------|
+| `Authorization`   | yes      | `Bearer ck_…` (§1.2)                           |
+| `Content-Type`    | yes      | `application/json` (§1.3)                      |
+| `Idempotency-Key` | no       | Caller-generated; makes retries safe (§1.8)    |
 
 #### Request body
 
@@ -130,9 +199,15 @@ Emit one event into the agent stream.
   "frame_id": "frame_xyz",
   "accepted": true,
   "n_workspaces": 2,
-  "follow_my_data": "/v1/frames/frame_xyz/story"
+  "follow_my_data": "/v1/frames/frame_xyz/story",
+  "livemode": true
 }
 ```
+
+`livemode` is `true` when the request authenticated with a live key and
+`false` for a test key (§1.2). It is always present on a `200`, and is
+the only field in the response that distinguishes test data from
+production data — SDKs MUST expose it rather than drop it.
 
 #### Fields that MAY be absent
 
@@ -282,6 +357,71 @@ Same as GET (§2.5).
 
 Same shape as GET — the config as stored after replacement.
 
+### 2.7 GET /v1/frames/{frame_id}/story
+
+Narrative lineage for one frame: where it came from, what was received,
+how it was read, what the canons matched, and what was concluded. This
+is the endpoint `await_outcome()` (§5.10) polls, and the target of the
+`follow_my_data` path returned by §2.1.
+
+#### Path parameters
+
+| Parameter  | Type   | Notes                                    |
+|------------|--------|------------------------------------------|
+| `frame_id` | string | as returned by `EmitResult.frame_id`     |
+
+#### Query parameters
+
+| Parameter      | Type   | Required | Notes                                        |
+|----------------|--------|----------|----------------------------------------------|
+| `workspace_id` | string | **yes**  | Which workspace's perspective to render      |
+
+#### Response body
+
+```json
+{
+  "frame_id":     "frame_xyz",
+  "subject_id":   "subject:div:customer:acme",
+  "workspace_id": "ws_1",
+  "occurred_at":  "2026-08-30T12:00:00Z",
+  "ingested_at":  "2026-08-30T12:00:01Z",
+  "ingestion":    { },
+  "frame":        { },
+  "reasoning":    [ ],
+  "soul_changes": [ ],
+  "ledger":       [ ],
+  "summary": {
+    "trace_count":     1,
+    "tags_fired":      3,
+    "soul_versions":   [],
+    "ledger_anchored": true
+  }
+}
+```
+
+Per-workspace reasoning traces live in `reasoning[]`; each carries its
+own `outcome`. There is **no top-level `outcome` key** — the resolved
+state of a frame is a property of each trace, not of the frame.
+
+> **Known defect — `await_outcome()` does not work against this
+> endpoint as specified.** Two mismatches, both open at 0.8.0:
+>
+> 1. `workspace_id` is a required query parameter here, but a frame fans
+>    out to `n_workspaces` workspaces (§2.1) and `EmitResult` does not
+>    return a workspace id. An SDK holding only `frame_id` cannot supply
+>    it, and omitting it is a `422`.
+> 2. `OutcomeResult` (§7.3) is specified with a top-level `outcome`
+>    discriminator, which this response does not carry. A poll loop
+>    keyed on it never terminates and expires at `timeout`.
+>
+> Both are tracked for 0.9.0. Resolving them requires a decision about
+> whether the endpoint should default to the key's workspace — which
+> would match `OutcomeResult.reasoning` being explicitly per-workspace —
+> or whether `await_outcome()` should take a workspace argument. It is
+> documented here rather than quietly omitted because the gap is the
+> reason the method is currently unusable, and because no contract-test
+> fixture covers it (§11).
+
 ---
 
 ## 3. Error handling
@@ -294,6 +434,7 @@ to a typed exception hierarchy:
 | 400    | `ValidationError`   | malformed payload                    |
 | 401    | `AuthError`         | API key missing / invalid / revoked  |
 | 403    | `PermissionError`   | key valid but lacks scope            |
+| 409    | `ConflictError`     | an `Idempotency-Key` request is already in flight (§1.8) |
 | 422    | `ValidationError`   | well-formed but unprocessable (bad event / rulebook) |
 | 429    | `RateLimitError`    | rate cap reached — retry after `Retry-After` |
 | 5xx    | `ServerError`       | transient — safe to retry            |
@@ -315,6 +456,13 @@ Every exception MUST expose:
   parsed from the response's `Retry-After` header (delta-seconds form);
   `null` when the header is absent or unparseable. SDKs MUST NOT sleep
   or retry automatically — surface the value and let the caller decide.
+
+`ConflictError` carries no extra fields beyond the common three. It is
+distinct from `ServerError` because it is **not** a transient fault: the
+duplicate is the caller's own earlier request, still running. Retrying
+the same `Idempotency-Key` after a short pause returns the original
+response rather than a second side effect. SDKs MUST NOT retry it
+automatically (§1.8).
 
 `CBOpenError` additionally exposes:
 
@@ -554,7 +702,10 @@ Parameters:
 - `frame_id: string` — returned by `capture().frame_id`
 - `timeout?: float` — seconds, default 30.0. MUST cap at 120.0.
 
-Returns `OutcomeResult` (§7.4) with per-workspace reasoning results.
+Returns `OutcomeResult` (§7.3) with per-workspace reasoning results.
+
+> See the known defect in §2.7: against the current server this method
+> cannot succeed. Do not treat it as working surface at 0.8.0.
 
 ### 5.11 `close() → void`
 
@@ -653,6 +804,12 @@ an `end_interaction` event.
 
 ## 7. Result types
 
+> **Reserved numbers.** §7.4 and §7.7 are vacant. They held types that
+> were removed before 0.7.0 and are left unused so the section numbers
+> cited throughout the four SDK sources stay stable. Do not renumber the
+> sections below to close the gaps; assign new types the next free
+> number instead.
+
 ### 7.1 `EmitResult`
 
 Returned by every event-emit method (`emit_event`, `subject_says`,
@@ -667,6 +824,7 @@ Returned by every event-emit method (`emit_event`, `subject_says`,
 | `n_workspaces`    | integer?              | number of workspaces the frame fanned out to   |
 | `frame_id`        | string?               | frame id for outcome retrieval                 |
 | `follow_my_data`  | string?               | path to the frame story                        |
+| `livemode`        | boolean?              | `true` for a live key, `false` for a test key (§1.2) |
 | `raw`             | object                | the full server JSON response                  |
 
 Legacy fields (`outcome`, `triage_decision`, `tags_fired`,
@@ -685,6 +843,7 @@ Returned by `capture()`.
 | `interaction_id`  | string                | "" if server omitted                           |
 | `subjects`        | array<string>         | subject ids on the resulting frame             |
 | `follow_my_data`  | string?               | path to the frame story                        |
+| `livemode`        | boolean?              | `true` for a live key, `false` for a test key (§1.2) |
 | `raw`             | object                | the full server JSON response                  |
 
 ### 7.3 `OutcomeResult`
@@ -857,6 +1016,8 @@ your SDK MUST expose.
 | `tags_fired`         | `tags_fired`        | `tagsFired`           | `TagsFired`          | `tagsFired`             |
 | `soul_version`       | `soul_version`      | `soulVersion`         | `SoulVersion`        | `soulVersion`           |
 | `follow_my_data`     | `follow_my_data`    | `followMyData`        | `FollowMyData`       | `followMyData`          |
+| `livemode`           | `livemode`          | `livemode`            | `Livemode`           | `livemode`              |
+| `retry_after`        | `retry_after`       | `retryAfter`          | `RetryAfter`         | `retryAfter`            |
 | `fired_policies`     | `fired_policies`    | `firedPolicies`       | `FiredPolicies`      | `firedPolicies`         |
 | `route_latency_ms`   | `route_latency_ms`  | `routeLatencyMs`      | `RouteLatencyMs`     | `routeLatencyMs`        |
 | `error`              | `error`             | `error`               | `Error`              | `error`                 |
@@ -882,6 +1043,7 @@ your SDK MUST expose.
 | `PermissionError`    | `PermissionError`   | `PermissionError`     | `DMZAgentPermissionException`           | `DMZAgentPermissionException`          |
 | `ValidationError`    | `ValidationError`   | `ValidationError`     | `DMZAgentValidationException`           | `DMZAgentValidationException`          |
 | `RateLimitError`     | `RateLimitError`    | `RateLimitError`      | `DMZAgentRateLimitException`            | `DMZAgentRateLimitException`           |
+| `ConflictError`      | `ConflictError`     | `ConflictError`       | `DMZAgentConflictException`             | `DMZAgentConflictException`            |
 | `ServerError`        | `ServerError`       | `ServerError`         | `DMZAgentServerException`               | `DMZAgentServerException`              |
 | `CBOpenError`        | `CBOpenError`       | `CBOpenError`         | `CircuitBreakerOpenException`            | `CircuitBreakerOpenException`           |
 
@@ -1018,6 +1180,26 @@ The contract test corpus contains:
 See [`contract-tests/runner-spec.md`](./contract-tests/runner-spec.md)
 for how the harness MUST be wired in each language.
 
+### 11.1 What the corpus does and does not cover
+
+Stated plainly, because "conformance is green" is otherwise read as
+"the surface is verified", and at 0.8.0 that is not what it means.
+
+`golden-envelopes.json` exercises 5 of the 15 methods in §5 —
+`subject_says`, `tool_call`, `tool_result`, `observation`, and `check` —
+across 2 of the 7 endpoints in §2 (`/v1/agent-stream/event` and
+`/v1/cb/check`).
+
+No fixture covers `capture()`, `await_outcome()`, `conversation()`,
+`guard()`, `close()`, the notification-prefs pair (§5.12, §5.13), or the
+division-config pair (§5.14, §5.15). The absence is load-bearing: the
+`await_outcome()` defect recorded in §2.7 survived four SDK
+implementations precisely because nothing executes that path.
+
+Treat a green `spec-conformance` check as evidence about serialization,
+signature verification, and error mapping — not as evidence that a
+method works end-to-end.
+
 ---
 
 ## 12. Versioning
@@ -1036,10 +1218,10 @@ documented in `CHANGELOG.md` of the spec repo before a MAJOR is cut.
 
 Each SDK pins to a spec version in its language-native manifest:
 
-- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.6.0"`
-- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.6.0"}`
-- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.6.0</DMZAgentSpecVersion>`
-- Java: `pom.xml` → `<dmzagent.spec.version>0.6.0</dmzagent.spec.version>`
+- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.8.0"`
+- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.8.0"}`
+- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.8.0</DMZAgentSpecVersion>`
+- Java: `pom.xml` → `<dmzagent.spec.version>0.8.0</dmzagent.spec.version>`
 
 The SDK's CI MUST fail-loud if the pinned spec version doesn't match
 the version of the spec repo it checks out.

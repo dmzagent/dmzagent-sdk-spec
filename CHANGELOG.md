@@ -7,6 +7,62 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+## [0.8.0] — 2026-08-30
+
+An audit of the specified surface against the server it describes and the
+four SDKs that implement it. Most of this release is documenting behaviour
+that already shipped but was never written down.
+
+### Added
+- **Test mode / live mode (§1.2).** Keys are issued as `ck_test_…` or
+  `ck_…`; the mode is a property of the key, not a request parameter.
+  Previously undocumented despite being fully implemented server-side.
+- **`livemode` on ingestion responses (§2.1, §7.1, §7.2).** The server has
+  always returned it; no SDK exposed it. It is the only field
+  distinguishing test data from production data in a response.
+- **Idempotency (§1.8).** `Idempotency-Key` on
+  `POST /v1/agent-stream/event`, with replay-verbatim semantics, a
+  `(workspace, mode, key)` scope, and a 60-second in-flight window. The
+  mechanism existed server-side and was invisible to every SDK, so no
+  caller could retry safely.
+- **`409 → ConflictError` (§3).** A concurrent duplicate previously
+  collapsed into generic `DMZAgentError`, leaving callers unable to
+  distinguish "retry shortly" from an unexpected failure. Naming map
+  entries added for all four languages (§8.5), and fixture
+  `409_idempotency_conflict` added to `error-mapping.json`.
+- **`GET /v1/frames/{frame_id}/story` (§2.7).** The endpoint
+  `await_outcome()` polls and `follow_my_data` points at. It was absent
+  from both §2 and `openapi.json`, which meant the spec could not be
+  implemented from the spec alone.
+- **§11.1 — what the contract corpus does and does not cover.** The corpus
+  exercises 5 of 15 methods across 2 of 7 endpoints. Recorded because a
+  green `spec-conformance` check was reasonably being read as broader
+  assurance than it provides.
+
+### Fixed
+- `OutcomeResult` cross-reference in §5.10 pointed at §7.4; the type is
+  at §7.3.
+- Document header read `currently 0.6.0` and `Last updated 2026-06-13`
+  after the 0.7.0 release bumped `VERSION` and `CHANGELOG` but not the
+  document. §1.4's User-Agent examples were stale for the same reason.
+- The 0.6.0 entry below named the notification endpoint
+  `/v1/notification-prefs`. That path has never existed — the endpoint is
+  `/v1/settings/notifications`, as §2.3/§2.4, `openapi.json`, and the
+  server all state. Corrected in place; the spec body was always right.
+
+### Known defects
+- **`await_outcome()` (§5.10) cannot succeed against the current server**,
+  for two independent reasons recorded in §2.7: the story endpoint
+  requires a `workspace_id` the SDK has no way to obtain, and
+  `OutcomeResult`'s top-level `outcome` discriminator does not exist in
+  the response. Not fixed here — resolving it is an API-shape decision,
+  not an editorial one. No contract fixture covers the method, which is
+  why it survived four implementations.
+
+### Notes
+- §7.4 and §7.7 are reserved-vacant. The SDK sources cite section numbers
+  extensively, so the gaps are held rather than closed by renumbering.
+
 ## [0.7.0] — 2026-07-10
 
 ### Added
@@ -23,8 +79,10 @@ versioning per `sdk-spec.md` §11.
 ## [0.6.0] — 2026-06-13
 
 ### Added
-- `/v1/notification-prefs` endpoint (GET/PUT) for email cadence, push, SMS,
-  and WhatsApp notification preferences (§2.3, §2.4).
+- `/v1/settings/notifications` endpoint (GET/PUT) for email cadence, push,
+  SMS, and WhatsApp notification preferences (§2.3, §2.4). *(Corrected in
+  0.8.0: this entry originally read `/v1/notification-prefs`, a path that
+  never existed.)*
 - `/v1/divisions/{id}/config` endpoint (GET/PUT) for per-division JSON
   configuration including `reasoning_mode` (§2.5, §2.6).
 - `get_notification_prefs()` / `update_notification_prefs()` on the client
