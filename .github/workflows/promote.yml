@@ -182,6 +182,6 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           gh issue create \
-            --repo praeceptor-thesis/dmzagent-sdk-spec \
+            --repo dmzagent/dmzagent-sdk-spec \
             --title "[yank] v${VERSION} partial publish — manual cleanup required" \
             --body "Promotion failed. Some registries may have accepted the publish; others did not.\n\nYank PyPI: \`pip yank dmzagent==${VERSION}\` via maintainer.\nDeprecate npm: \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`.\nNuGet: unlist via portal (NuGet has no delete after retention).\nMaven Central: file a ticket — yanks are manual."
