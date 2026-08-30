@@ -406,21 +406,30 @@ state of a frame is a property of each trace, not of the frame.
 > **Known defect — `await_outcome()` does not work against this
 > endpoint as specified.** Two mismatches, both open at 0.8.0:
 >
-> 1. `workspace_id` is a required query parameter here, but a frame fans
->    out to `n_workspaces` workspaces (§2.1) and `EmitResult` does not
->    return a workspace id. An SDK holding only `frame_id` cannot supply
->    it, and omitting it is a `422`.
+> 1. `workspace_id` is required here, and it is the wrong axis. Ingestion
+>    is **division-scoped**: the server resolves the division from the
+>    `subject_id` (Appendix A), then fans the frame out to every workspace
+>    in that division — `n_workspaces` in §2.1 is exactly that count, and
+>    one reasoning trace is produced per workspace. Asking the caller for
+>    a single `workspace_id` makes them select 1 of N perspectives, which
+>    contradicts `OutcomeResult.reasoning` (§7.3) being specified as
+>    *per-workspace* traces, plural. The SDK is not missing a value it
+>    should be sending — it is being asked for the wrong one.
 > 2. `OutcomeResult` (§7.3) is specified with a top-level `outcome`
->    discriminator, which this response does not carry. A poll loop
->    keyed on it never terminates and expires at `timeout`.
+>    discriminator, which this response does not carry; each entry in
+>    `reasoning[]` carries its own. A poll loop keyed on the top-level
+>    field never terminates and expires at `timeout`.
 >
-> Both are tracked for 0.9.0. Resolving them requires a decision about
-> whether the endpoint should default to the key's workspace — which
-> would match `OutcomeResult.reasoning` being explicitly per-workspace —
-> or whether `await_outcome()` should take a workspace argument. It is
-> documented here rather than quietly omitted because the gap is the
-> reason the method is currently unusable, and because no contract-test
-> fixture covers it (§11).
+> Both are tracked for 0.9.0. The fix does not need a new SDK parameter:
+> the division is already derivable from the `subject_id` the caller sent,
+> and separately from the API key, which resolves to a workspace and from
+> there to exactly one division. The open decision is whether the endpoint
+> returns the whole division's traces when `workspace_id` is omitted — the
+> shape `OutcomeResult` already promises — or keeps the parameter as an
+> optional filter for narrowing to one perspective.
+>
+> Recorded rather than quietly omitted because it is the reason the method
+> is unusable, and because no contract-test fixture covers it (§11.1).
 
 ---
 
