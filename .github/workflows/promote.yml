@@ -31,10 +31,10 @@ permissions:
 
 env:
   SDK_REPOS: |
-    praeceptor-thesis/dmzagent-sdk-python
-    praeceptor-thesis/dmzagent-sdk-typescript
-    praeceptor-thesis/dmzagent-sdk-csharp
-    praeceptor-thesis/dmzagent-sdk-java
+    dmzagent/dmzagent-sdk-python
+    dmzagent/dmzagent-sdk-typescript
+    dmzagent/dmzagent-sdk-csharp
+    dmzagent/dmzagent-sdk-java
 
 jobs:
   resolve-version:
@@ -75,7 +75,7 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           gh api -X GET \
-            "/repos/praeceptor-thesis/${{ matrix.sdk }}/branches/release%2Fv${VERSION}" \
+            "/repos/dmzagent/${{ matrix.sdk }}/branches/release%2Fv${VERSION}" \
             > /dev/null
 
       - name: Verify spec-conformance status check is green
@@ -83,13 +83,19 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_DISPATCH_TOKEN }}
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
-          SHA=$(gh api "/repos/praeceptor-thesis/${{ matrix.sdk }}/branches/release%2Fv${VERSION}" \
+          SHA=$(gh api "/repos/dmzagent/${{ matrix.sdk }}/branches/release%2Fv${VERSION}" \
                  --jq '.commit.sha')
-          STATE=$(gh api "/repos/praeceptor-thesis/${{ matrix.sdk }}/commits/${SHA}/check-runs" \
-                  --jq ".check_runs[] | select(.name == \"spec-conformance/${VERSION}\") | .conclusion" \
+          # The SDKs publish this as a COMMIT STATUS (createCommitStatus,
+          # context spec-conformance/<version>), not a check run. This
+          # queried /check-runs and filtered .check_runs[].name, which a
+          # commit status never appears in — so STATE was always empty and
+          # the gate could never pass. It failed closed, which is the safe
+          # direction, but it meant coordinated release never worked.
+          STATE=$(gh api "/repos/dmzagent/${{ matrix.sdk }}/commits/${SHA}/status" \
+                  --jq ".statuses[] | select(.context == \"spec-conformance/${VERSION}\") | .state" \
                   | head -n1)
           if [ "$STATE" != "success" ]; then
-            echo "::error::spec-conformance/${VERSION} not green for ${{ matrix.sdk }} — got: $STATE"
+            echo "::error::spec-conformance/${VERSION} not green for ${{ matrix.sdk }} — got: ${STATE:-<no such status on ${SHA}>}"
             exit 1
           fi
 
@@ -111,7 +117,7 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           gh api -X POST \
-            "/repos/praeceptor-thesis/${{ matrix.sdk }}/dispatches" \
+            "/repos/dmzagent/${{ matrix.sdk }}/dispatches" \
             -f event_type=publish \
             -F client_payload[version]="${VERSION}"
 
@@ -182,6 +188,6 @@ jobs:
           VERSION: ${{ needs.resolve-version.outputs.version }}
         run: |
           gh issue create \
-            --repo praeceptor-thesis/dmzagent-sdk-spec \
+            --repo dmzagent/dmzagent-sdk-spec \
             --title "[yank] v${VERSION} partial publish — manual cleanup required" \
             --body "Promotion failed. Some registries may have accepted the publish; others did not.\n\nYank PyPI: \`pip yank dmzagent==${VERSION}\` via maintainer.\nDeprecate npm: \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`.\nNuGet: unlist via portal (NuGet has no delete after retention).\nMaven Central: file a ticket — yanks are manual."

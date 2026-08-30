@@ -1,49 +1,84 @@
 {
-  "$schema_version": "0.5.0",
-  "$description": "HTTP status → canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md §8.5).",
+  "$schema_version": "0.8.0",
+  "$description": "HTTP status \u2192 canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md \u00a78.5).",
   "fixtures": [
     {
       "name": "400_validation",
       "status": 400,
-      "body": { "detail": "kind must be one of ..." },
+      "body": {
+        "detail": "kind must be one of ..."
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "ValidationError",
       "expected_status_code": 400
     },
     {
       "name": "401_auth",
       "status": 401,
-      "body": { "detail": "invalid api key" },
+      "body": {
+        "detail": "invalid api key"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "AuthError",
       "expected_status_code": 401
     },
     {
       "name": "403_permission",
       "status": 403,
-      "body": { "detail": "scope not granted" },
+      "body": {
+        "detail": "scope not granted"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "PermissionError",
       "expected_status_code": 403
     },
     {
       "name": "500_server",
       "status": 500,
-      "body": { "detail": "internal error" },
+      "body": {
+        "detail": "internal error"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "ServerError",
       "expected_status_code": 500
     },
     {
       "name": "503_server",
       "status": 503,
-      "body": { "detail": "upstream unavailable" },
+      "body": {
+        "detail": "upstream unavailable"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "ServerError",
       "expected_status_code": 503
     },
@@ -52,7 +87,12 @@
       "status": 418,
       "body": "i am a teapot",
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "DMZAgentError",
       "expected_status_code": 418
     },
@@ -65,15 +105,25 @@
         "warning": false,
         "reason": "policy:risk.refund_velocity fired",
         "fired_policies": [
-          { "cb_policy_id": "pol_123", "name": "refund_velocity", "action": "open" }
+          {
+            "cb_policy_id": "pol_123",
+            "name": "refund_velocity",
+            "action": "open"
+          }
         ],
-        "anchor": { "ledger_index": 1234, "hash": "0xdeadbeef" },
+        "anchor": {
+          "ledger_index": 1234,
+          "hash": "0xdeadbeef"
+        },
         "checked_at": "2026-05-30T12:00:00Z",
         "latency_ms": 7.2,
         "route_latency_ms": 11.4
       },
       "method": "guard_with_raise_on_open",
-      "args": { "subject_id": "user:ws_test:bot", "raise_on_open": true },
+      "args": {
+        "subject_id": "user:ws_test:bot",
+        "raise_on_open": true
+      },
       "expected_exception": "CBOpenError",
       "expected_fields": {
         "reason": "policy:risk.refund_velocity fired",
@@ -95,7 +145,10 @@
         "route_latency_ms": 8.0
       },
       "method": "guard_with_raise_on_open",
-      "args": { "subject_id": "user:ws_test:bot", "raise_on_open": false },
+      "args": {
+        "subject_id": "user:ws_test:bot",
+        "raise_on_open": false
+      },
       "expected_exception": null,
       "expected_result_fields": {
         "allow": false,
@@ -105,19 +158,53 @@
     {
       "name": "422_unprocessable_validation",
       "status": 422,
-      "body": { "detail": "logic evaluation failed for this event", "error": "validation_error" },
+      "body": {
+        "detail": "logic evaluation failed for this event",
+        "error": "validation_error"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "ValidationError",
       "expected_status_code": 422
     },
     {
+      "name": "409_idempotency_conflict",
+      "status": 409,
+      "body": {
+        "detail": "a request with this Idempotency-Key is already being processed"
+      },
+      "method": "subject_says",
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
+      "expected_exception": "ConflictError",
+      "expected_status_code": 409
+    },
+    {
       "name": "429_rate_limited_retry_after",
       "status": 429,
-      "headers": { "Retry-After": "30" },
-      "body": { "detail": "rate cap reached (10/10 this window)", "error": "rate_limited" },
+      "headers": {
+        "Retry-After": "30"
+      },
+      "body": {
+        "detail": "rate cap reached (10/10 this window)",
+        "error": "rate_limited"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "RateLimitError",
       "expected_status_code": 429,
       "expected_retry_after": 30
@@ -125,9 +212,17 @@
     {
       "name": "429_rate_limited_no_header",
       "status": 429,
-      "body": { "detail": "rate cap reached", "error": "rate_limited" },
+      "body": {
+        "detail": "rate cap reached",
+        "error": "rate_limited"
+      },
       "method": "subject_says",
-      "args": { "agent_subject_id": "user:ws_test:bot", "subject_id": "user:ws_test:cust", "subject_type": "sensor", "text": "hi" },
+      "args": {
+        "agent_subject_id": "user:ws_test:bot",
+        "subject_id": "user:ws_test:cust",
+        "subject_type": "sensor",
+        "text": "hi"
+      },
       "expected_exception": "RateLimitError",
       "expected_status_code": 429,
       "expected_retry_after": null
