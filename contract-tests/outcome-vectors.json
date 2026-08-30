@@ -1,0 +1,168 @@
+{
+  "$schema_version": "0.8.1",
+  "$description": "Conformance vectors for await_outcome() (sdk-spec.md §5.10) against the frame story endpoint (§2.7). Runner stubs the SDK's HTTP transport to serve `responses` in order — the last entry repeats once exhausted — then calls `method` with `args` and asserts on the request the SDK made and the OutcomeResult it produced. §11.1 recorded that no fixture covered this method, which is why a defect that made it unusable survived four independent implementations: none sent the (then required) workspace_id, and the four disagreed on when to stop polling. These vectors pin both. `expected_request.forbidden_query_params` MUST be absent from every request the SDK issues, not merely the first.",
+  "fixtures": [
+    {
+      "name": "outcome_sends_no_workspace_id",
+      "$why": "The regression. The story endpoint is division-scoped: a frame fans out to every workspace in its division and the SDK holds no workspace to name. Sending one narrows the result to 1 of N perspectives and makes `complete` mean 'that workspace finished' rather than 'reasoning finished'.",
+      "method": "await_outcome",
+      "args": { "frame_id": "frame_abc", "timeout": 5.0 },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "subject_id": "subject:dv_test:acme-bot",
+            "division_id": "dv_test",
+            "workspace_id": null,
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "applied",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" },
+              { "trace_id": "trace_2", "workspace_id": "ws_2", "outcome": "no_change" }
+            ],
+            "summary": { "trace_count": 2, "workspace_count": 2, "complete": true }
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "GET",
+        "path": "/v1/frames/frame_abc/story",
+        "forbidden_query_params": ["workspace_id"]
+      },
+      "expected_result": { "frame_id": "frame_abc", "outcome": "applied" }
+    },
+    {
+      "name": "outcome_polls_until_complete",
+      "$why": "TypeScript, Java and C# returned the first response that parsed. The story endpoint answers 200 throughout the fan-out, returning traces as each workspace finishes, so that yields a half-finished story. Termination is `summary.complete`, nothing else.",
+      "method": "await_outcome",
+      "args": { "frame_id": "frame_abc", "timeout": 5.0 },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "division_id": "dv_test",
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "applied",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" }
+            ],
+            "summary": { "trace_count": 1, "workspace_count": 2, "complete": false }
+          }
+        },
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "division_id": "dv_test",
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "applied",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" },
+              { "trace_id": "trace_2", "workspace_id": "ws_2", "outcome": "no_change" }
+            ],
+            "summary": { "trace_count": 2, "workspace_count": 2, "complete": true }
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "GET",
+        "path": "/v1/frames/frame_abc/story",
+        "forbidden_query_params": ["workspace_id"]
+      },
+      "expected_min_requests": 2,
+      "expected_result": {
+        "frame_id": "frame_abc",
+        "outcome": "applied",
+        "complete": true,
+        "reasoning_trace_ids": ["trace_1", "trace_2"]
+      }
+    },
+    {
+      "name": "outcome_exposes_per_trace_workspace",
+      "$why": "§7.3 requires reasoning[].workspace_id. Without it a caller receives N traces with no way to tell the perspectives apart, which is the same as receiving none.",
+      "method": "await_outcome",
+      "args": { "frame_id": "frame_abc", "timeout": 5.0 },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "division_id": "dv_test",
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "applied",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" },
+              { "trace_id": "trace_2", "workspace_id": "ws_2", "outcome": "held" }
+            ],
+            "summary": { "trace_count": 2, "workspace_count": 2, "complete": true }
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "GET",
+        "path": "/v1/frames/frame_abc/story",
+        "forbidden_query_params": ["workspace_id"]
+      },
+      "expected_result": {
+        "frame_id": "frame_abc",
+        "reasoning_workspace_ids": ["ws_1", "ws_2"],
+        "reasoning_outcomes": ["applied", "held"]
+      }
+    },
+    {
+      "name": "outcome_reports_server_fold_verbatim",
+      "$why": "The frame-level outcome is folded server-side (failed > held > applied > no_change > skipped) so four SDKs cannot arrive at four answers. An SDK that recomputes it from reasoning[] — for instance taking the first or the most favourable trace — fails here: the traces below contain an `applied`, but the fold is `failed` and that is what the caller must be told.",
+      "method": "await_outcome",
+      "args": { "frame_id": "frame_abc", "timeout": 5.0 },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "division_id": "dv_test",
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "failed",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" },
+              { "trace_id": "trace_2", "workspace_id": "ws_2", "outcome": "failed" }
+            ],
+            "summary": { "trace_count": 2, "workspace_count": 2, "complete": true }
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "GET",
+        "path": "/v1/frames/frame_abc/story",
+        "forbidden_query_params": ["workspace_id"]
+      },
+      "expected_result": { "frame_id": "frame_abc", "outcome": "failed" }
+    }
+  ],
+  "timeouts": [
+    {
+      "name": "outcome_times_out_while_fan_out_incomplete",
+      "$why": "An incomplete story must never be returned as a final answer. Held open until the deadline, then a timeout — not a partial result. §8.5 has no timeout row and all four SDKs raise their ServerError equivalent, so that is what is specified; a dedicated timeout type is breaking and deferred.",
+      "method": "await_outcome",
+      "args": { "frame_id": "frame_abc", "timeout": 1.0 },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "frame_abc",
+            "division_id": "dv_test",
+            "workspace_ids": ["ws_1", "ws_2"],
+            "outcome": "applied",
+            "reasoning": [
+              { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" }
+            ],
+            "summary": { "trace_count": 1, "workspace_count": 2, "complete": false }
+          }
+        }
+      ],
+      "expected_exception": "ServerError",
+      "expected_message_contains": "timed out"
+    }
+  ]
+}

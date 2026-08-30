@@ -1,6 +1,6 @@
 {
-  "$schema_version": "0.8.0",
-  "$description": "HTTP status \u2192 canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md \u00a78.5).",
+  "$schema_version": "0.8.1",
+  "$description": "HTTP status → canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md §8.5).",
   "fixtures": [
     {
       "name": "400_validation",
