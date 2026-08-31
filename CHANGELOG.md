@@ -7,6 +7,51 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+## [0.9.0] — 2026-08-31
+
+### Added
+- **Circuit-breaker state cache (§4.4).** `check()` is a network round
+  trip in front of a sensitive action, and is often the only synchronous
+  DMZAgent call in a request. An opt-in per-client cache removes that
+  round trip for repeated checks on the same subject.
+
+  The cache is **off unless `cb_cache_ttl` is set above zero**, applies
+  one TTL to every state, is bounded and LRU-evicted at
+  `cb_cache_max_entries`, and never leaves the process. `check(fresh)`
+  bypasses it.
+
+  What the caller is choosing is written into the section in those
+  terms: a cached `closed` is an allow the server might no longer give,
+  and the TTL is the maximum time a newly-opened breaker can go
+  unobserved by that client. An SDK MUST NOT hold a deny longer than an
+  allow — the asymmetry is a safety policy and belongs to whoever set
+  the TTL.
+- **`cached`, `cache_age`, `stale` on `CheckResult` (§7.5).** How the
+  caller got this result, with no counterpart on the wire. A caller
+  recording a denial has to be able to tell it read four-second-old
+  state. A cached result keeps the server's own `latency_ms`,
+  `route_latency_ms`, `checked_at` and `raw` — those describe the check
+  that happened and are not rewritten to describe the cache hit.
+- **`cb_cache_on_error` (§4.4).** `raise` (default) is the behaviour of
+  an SDK with no cache. `last_known` serves the last entry for that key
+  even if expired, marked `stale`, when the check itself fails —
+  answering from memory while DMZAgent is unreachable, which must be
+  marked rather than folded into a normal cache hit.
+- Naming map entries for all three constructor parameters (§8.3) and all
+  three result fields (§8.4).
+
+### Notes
+- No wire change: the endpoint surface in `openapi.json` is unchanged —
+  only its `info.version` moves with `VERSION`, alongside the three
+  contract-test corpus files — and a server that has never heard of the
+  cache serves a cached client identically. Every addition here is
+  client-side.
+- Specified and implemented together: the four SDK pull requests carrying
+  §4.4 open alongside this one, so nothing here joins the
+  specified-but-unimplemented surface even briefly. The SDKs cannot go
+  green until this merges, because each now asserts its pin against this
+  repository's `VERSION`.
+
 ## [0.8.1] — 2026-08-30
 
 Closes the `await_outcome()` defect recorded as known at 0.8.0. The method
