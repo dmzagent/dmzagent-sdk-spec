@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "DMZAgent SDK API",
-    "version": "0.8.1",
+    "version": "0.9.0",
     "summary": "The public surface every DMZAgent SDK speaks: emit events, check guards, and manage conversation settings.",
     "description": "This document describes the wire contract in sdk-spec.md, and nothing beyond it.\n\nIt is deliberately narrow. The reasoning server exposes a much larger internal REST surface; the endpoints here are the ones the four SDKs (Python, TypeScript, Java, C#) are permitted to call, so an integrator can read the whole contract in one sitting.\n\nEvery request and response body references a schema in `schemas/`, which stays the single source of truth — the schemas are JSON Schema 2020-12, which OpenAPI 3.1 uses natively, so nothing is duplicated or restated here.\n\nSee sdk-spec.md for the parts a document like this cannot express: method naming per language, thread safety, resource lifecycle, and the contract-test corpus every SDK must pass.",
     "license": {

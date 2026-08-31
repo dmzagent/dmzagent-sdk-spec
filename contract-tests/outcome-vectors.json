@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.8.1",
+  "$schema_version": "0.9.0",
   "$description": "Conformance vectors for await_outcome() (sdk-spec.md §5.10) against the frame story endpoint (§2.7). Runner stubs the SDK's HTTP transport to serve `responses` in order — the last entry repeats once exhausted — then calls `method` with `args` and asserts on the request the SDK made and the OutcomeResult it produced. §11.1 recorded that no fixture covered this method, which is why a defect that made it unusable survived four independent implementations: none sent the (then required) workspace_id, and the four disagreed on when to stop polling. These vectors pin both. `expected_request.forbidden_query_params` MUST be absent from every request the SDK issues, not merely the first.",
   "fixtures": [
     {

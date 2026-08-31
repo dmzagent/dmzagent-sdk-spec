@@ -41,9 +41,11 @@ versioning per `sdk-spec.md` §11.
   three result fields (§8.4).
 
 ### Notes
-- No wire change: `openapi.json` is untouched, and a server that has
-  never heard of the cache serves a cached client identically. Every
-  addition here is client-side.
+- No wire change: the endpoint surface in `openapi.json` is unchanged —
+  only its `info.version` moves with `VERSION`, alongside the three
+  contract-test corpus files — and a server that has never heard of the
+  cache serves a cached client identically. Every addition here is
+  client-side.
 - Specified and implemented together: the four SDK pull requests carrying
   §4.4 open alongside this one, so nothing here joins the
   specified-but-unimplemented surface even briefly. The SDKs cannot go
