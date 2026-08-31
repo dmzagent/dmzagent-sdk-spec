@@ -1,8 +1,8 @@
 # DMZAgent SDK Specification
 
-**Version:** see [`VERSION`](./VERSION) — currently `0.8.0`
+**Version:** see [`VERSION`](./VERSION) — currently `0.9.0`
 **Status:** pre-1.0 (MINOR bumps may include breaking wire changes)
-**Last updated:** 2026-08-30
+**Last updated:** 2026-08-31
 
 This document defines the public surface every DMZAgent SDK MUST
 implement. Every language binding — Python, TypeScript, C#, Java — is a
@@ -10,7 +10,7 @@ translation of this surface. Same constructor shape, same methods (under
 language-idiomatic naming), same return types, same error hierarchy,
 same wire protocol.
 
-A spec tag (`v0.8.0`) corresponds 1:1 to a release tag in every SDK
+A spec tag (`v0.9.0`) corresponds 1:1 to a release tag in every SDK
 repository. No SDK ships a version the spec hasn't blessed.
 
 ---
@@ -74,8 +74,8 @@ SDKs MUST set:
 User-Agent: dmzagent-<language>/<spec-version>
 ```
 
-Examples: `dmzagent-python/0.8.0`, `dmzagent-typescript/0.8.0`,
-`dmzagent-csharp/0.8.0`, `dmzagent-java/0.8.0`. Optional suffix in the
+Examples: `dmzagent-python/0.9.0`, `dmzagent-typescript/0.9.0`,
+`dmzagent-csharp/0.9.0`, `dmzagent-java/0.9.0`. Optional suffix in the
 form `(<runtime-info>)` is permitted.
 
 ### 1.5 Timeout
@@ -404,7 +404,7 @@ own `outcome`. There is **no top-level `outcome` key** — the resolved
 state of a frame is a property of each trace, not of the frame.
 
 > **Known defect — `await_outcome()` does not work against this
-> endpoint as specified.** Two mismatches, both open at 0.8.0:
+> endpoint as specified.** Two mismatches, both still open at 0.9.0:
 >
 > 1. `workspace_id` is required here, and it is the wrong axis. Ingestion
 >    is **division-scoped**: the server resolves the division from the
@@ -514,6 +514,13 @@ both expect a `Client` / service suffix for HTTP service classes.
 | `base_url`     | string               | no       | `https://api.dmzagent.com`      |
 | `timeout`      | duration             | no       | 10000ms / 10s                    |
 | `user_agent`   | string               | no       | `dmzagent-<lang>/<spec-version>`|
+| `cb_cache_ttl`     | duration | no | `0` (disabled)  |
+| `cb_cache_max_entries` | integer | no | `1024`      |
+| `cb_cache_on_error`| enum     | no | `raise`         |
+
+The three `cb_cache_*` parameters configure the circuit-breaker state
+cache; see §4.4. The cache is OFF unless `cb_cache_ttl` is greater than
+zero.
 
 ### 4.2 Thread safety
 
@@ -537,6 +544,81 @@ The client MUST implement the language's idiomatic resource cleanup:
 
 Closing the client MUST release the underlying HTTP transport. Calling
 `close()` more than once MUST be a no-op (not an error).
+
+### 4.4 Circuit-breaker state cache
+
+`check()` is a network round trip on a path that callers put in front of
+sensitive actions, so it is often the only synchronous DMZAgent call in a
+request. An in-process cache removes that round trip for repeated checks
+on the same subject.
+
+**The cache is off by default and MUST stay off unless the caller sets
+`cb_cache_ttl` above zero.** A caching safety check that nobody asked for
+is a worse failure than a slow one.
+
+#### What the caller is choosing
+
+A cached `closed` is an allow the server might no longer give. **The TTL
+is the maximum time a newly-opened breaker can go unobserved by this
+client.** An SDK MUST state that in the documentation of every
+`cb_cache_*` parameter it exposes, in those terms.
+
+The cache applies the same TTL to every state. An SDK MUST NOT invent a
+different lifetime per state: choosing to hold a deny longer than an
+allow is a safety policy, and it belongs to the caller who set the TTL,
+not to the SDK.
+
+#### Behaviour
+
+1. The cache key is `(scope, scope_ref)` — a `subject` entry and an
+   `interaction` entry with the same id are distinct.
+2. It is per client instance and in-process. An SDK MUST NOT share it
+   across clients or write it anywhere outside the process.
+3. Only a successful check populates it. Errors are never cached.
+4. An entry older than `cb_cache_ttl` MUST NOT be served except under
+   the `last_known` error policy below.
+5. The cache is bounded at `cb_cache_max_entries`, evicting
+   least-recently-used entries first. A client that checks many subjects
+   MUST NOT grow without limit.
+6. It MUST be safe to use from as many threads as the client itself is
+   (§4.2).
+7. `check(fresh = true)` MUST bypass any cached entry, perform the
+   request, and replace the entry.
+
+#### Every result says where it came from
+
+A cached result MUST carry `cached = true` and `cache_age` — the age of
+the entry when it was served. A fresh result MUST carry `cached = false`
+and a zero age. A caller recording a denial has to be able to tell that
+it read four-second-old state, and cannot if the SDK hides it.
+
+`latency_ms`, `route_latency_ms`, `checked_at` and `raw` on a cached
+result are the values from the check that actually happened. They
+describe that check, and an SDK MUST NOT rewrite them to describe the
+cache hit.
+
+#### When the check fails
+
+`cb_cache_on_error` decides what happens when the request fails —
+network error, timeout, or 5xx:
+
+| Value        | Behaviour                                                     |
+|--------------|---------------------------------------------------------------|
+| `raise`      | Propagate the error. This is the behaviour of an SDK with no cache, and the default. |
+| `last_known` | Serve the last cached entry for that key even if it has expired, marked `cached = true` and `stale = true`. When there is no entry, propagate the error. |
+
+`stale` marks every result served on that path, whether or not the entry
+had expired: what the caller needs to know is that the server was asked
+and could not answer, so this came from memory. An entry served normally
+inside its TTL is `cached` and NOT `stale`.
+
+`last_known` MUST NOT be reachable without `cb_cache_ttl` above zero:
+there is nothing to fall back to until the caller has opted into the
+cache.
+
+A `stale` result is the client answering from memory while DMZAgent is
+unreachable. It MUST be marked, and an SDK MUST NOT extend a normal TTL
+to cover an outage silently.
 
 ---
 
@@ -626,14 +708,18 @@ sensor readings).
   `"lead"`, `"ticket"`, `"journey"`
 - `interaction_id?: string`
 
-### 5.6 `check(subject_id? | interaction_id?) → CheckResult`
+### 5.6 `check(subject_id? | interaction_id?, fresh=false) → CheckResult`
 
 Circuit-breaker check. Pass EXACTLY ONE of `subject_id` or
 `interaction_id`. Both nil or both set MUST throw a validation error.
 
-### 5.7 `guard(subject_id? | interaction_id?, raise_on_open=false) → context-managed CheckResult`
+`fresh = true` bypasses the state cache (§4.4) and refreshes it. With the
+cache disabled — the default — it has no effect.
 
-Resource-scoped wrapper around `check()`. Language idioms:
+### 5.7 `guard(subject_id? | interaction_id?, raise_on_open=false, fresh=false) → context-managed CheckResult`
+
+Resource-scoped wrapper around `check()`; `fresh` is passed through to
+it (§4.4). Language idioms:
 
 - Python: `@contextmanager`-style `with cx.guard(...) as g:` yielding
   the `CheckResult`.
@@ -714,7 +800,7 @@ Parameters:
 Returns `OutcomeResult` (§7.3) with per-workspace reasoning results.
 
 > See the known defect in §2.7: against the current server this method
-> cannot succeed. Do not treat it as working surface at 0.8.0.
+> cannot succeed. Do not treat it as working surface at 0.9.0.
 
 ### 5.11 `close() → void`
 
@@ -902,7 +988,14 @@ Returned by `check()`.
 | `checked_at`       | string          | ISO-8601, may be ""                              |
 | `latency_ms`       | number          | server-side cb.check() latency                   |
 | `route_latency_ms` | number          | server-side route handler latency                |
+| `cached`           | boolean         | served from the state cache (§4.4)                |
+| `cache_age`        | duration        | age of the cache entry when served; zero if fresh |
+| `stale`            | boolean         | the check failed; this is the last known state    |
 | `raw`              | object          | the full server JSON response                    |
+
+`cached`, `cache_age` and `stale` describe how the caller got this
+result, and have no counterpart on the wire. A client with the cache
+disabled always reports `false`, zero, `false`.
 
 ### 7.6 `ReviewEvent`
 
@@ -1011,6 +1104,9 @@ your SDK MUST expose.
 | `timeout`    | `timeout`    | `timeout`    | `timeout`    | `timeout`    |
 | `user_agent` | `user_agent` | `userAgent`  | `userAgent`  | `userAgent`  |
 | `subject_type` | `subject_type` | `subjectType` | `SubjectType` | `subjectType` |
+| `cb_cache_ttl` | `cb_cache_ttl` | `cbCacheTtl` | `cbCacheTtl` | `cbCacheTtl` |
+| `cb_cache_max_entries` | `cb_cache_max_entries` | `cbCacheMaxEntries` | `cbCacheMaxEntries` | `cbCacheMaxEntries` |
+| `cb_cache_on_error` | `cb_cache_on_error` | `cbCacheOnError` | `cbCacheOnError` | `cbCacheOnError` |
 
 ### 8.4 Result fields
 
@@ -1029,6 +1125,9 @@ your SDK MUST expose.
 | `retry_after`        | `retry_after`       | `retryAfter`          | `RetryAfter`         | `retryAfter`            |
 | `fired_policies`     | `fired_policies`    | `firedPolicies`       | `FiredPolicies`      | `firedPolicies`         |
 | `route_latency_ms`   | `route_latency_ms`  | `routeLatencyMs`      | `RouteLatencyMs`     | `routeLatencyMs`        |
+| `cached`             | `cached`            | `cached`              | `Cached`             | `cached`                |
+| `cache_age`          | `cache_age_ms`      | `cacheAgeMs`          | `CacheAge`           | `cacheAge`              |
+| `stale`              | `stale`             | `stale`               | `Stale`              | `stale`                 |
 | `error`              | `error`             | `error`               | `Error`              | `error`                 |
 | `review_id`          | `review_id`         | `reviewId`            | `ReviewId`           | `reviewId`              |
 | `tag_id`             | `tag_id`            | `tagId`               | `TagId`              | `tagId`                 |
@@ -1192,7 +1291,7 @@ for how the harness MUST be wired in each language.
 ### 11.1 What the corpus does and does not cover
 
 Stated plainly, because "conformance is green" is otherwise read as
-"the surface is verified", and at 0.8.0 that is not what it means.
+"the surface is verified", and at 0.9.0 that is not what it means.
 
 `golden-envelopes.json` exercises 5 of the 15 methods in §5 —
 `subject_says`, `tool_call`, `tool_result`, `observation`, and `check` —
@@ -1204,6 +1303,12 @@ No fixture covers `capture()`, `await_outcome()`, `conversation()`,
 division-config pair (§5.14, §5.15). The absence is load-bearing: the
 `await_outcome()` defect recorded in §2.7 survived four SDK
 implementations precisely because nothing executes that path.
+
+Nor does any fixture cover the state cache (§4.4). The corpus asserts on
+request and response envelopes, and a cache hit is the ABSENCE of a
+request — there is no envelope to golden. Each SDK carries its own
+cache tests instead, which means cache behaviour is held to four
+independent readings of §4.4 rather than to one shared corpus.
 
 Treat a green `spec-conformance` check as evidence about serialization,
 signature verification, and error mapping — not as evidence that a
@@ -1227,10 +1332,10 @@ documented in `CHANGELOG.md` of the spec repo before a MAJOR is cut.
 
 Each SDK pins to a spec version in its language-native manifest:
 
-- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.8.0"`
-- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.8.0"}`
-- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.8.0</DMZAgentSpecVersion>`
-- Java: `pom.xml` → `<dmzagent.spec.version>0.8.0</dmzagent.spec.version>`
+- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.9.0"`
+- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.9.0"}`
+- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.9.0</DMZAgentSpecVersion>`
+- Java: `pom.xml` → `<dmzagent.spec.version>0.9.0</dmzagent.spec.version>`
 
 The SDK's CI MUST fail-loud if the pinned spec version doesn't match
 the version of the spec repo it checks out.
