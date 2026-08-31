@@ -372,26 +372,38 @@ is the endpoint `await_outcome()` (§5.10) polls, and the target of the
 
 #### Query parameters
 
-| Parameter      | Type   | Required | Notes                                        |
-|----------------|--------|----------|----------------------------------------------|
-| `workspace_id` | string | **yes**  | Which workspace's perspective to render      |
+| Parameter      | Type   | Required | Notes                                         |
+|----------------|--------|----------|-----------------------------------------------|
+| `workspace_id` | string | no       | Narrow to one workspace's perspective. Omitted (the normal case), the whole division's traces are returned. |
+
+Ingestion is **division-scoped**: the division is resolved from the
+`subject_id` (Appendix A), the frame fans out to every workspace in that
+division, and one reasoning trace is produced per workspace —
+`n_workspaces` in §2.1 is exactly that count. The frame's natural scope is
+therefore the division, and SDKs MUST NOT send `workspace_id` unless the
+caller explicitly asked to narrow to a single perspective.
 
 #### Response body
 
 ```json
 {
-  "frame_id":     "frame_xyz",
-  "subject_id":   "subject:div:customer:acme",
-  "workspace_id": "ws_1",
-  "occurred_at":  "2026-08-30T12:00:00Z",
-  "ingested_at":  "2026-08-30T12:00:01Z",
-  "ingestion":    { },
-  "frame":        { },
-  "reasoning":    [ ],
-  "soul_changes": [ ],
-  "ledger":       [ ],
+  "frame_id":      "frame_xyz",
+  "subject_id":    "subject:div:customer:acme",
+  "division_id":   "div",
+  "workspace_id":  null,
+  "workspace_ids": ["ws_1", "ws_2"],
+  "outcome":       "applied",
+  "occurred_at":   "2026-08-30T12:00:00Z",
+  "ingested_at":   "2026-08-30T12:00:01Z",
+  "ingestion":     { },
+  "frame":         { },
+  "reasoning":     [ { "trace_id": "trace_1", "workspace_id": "ws_1", "outcome": "applied" } ],
+  "soul_changes":  [ ],
+  "ledger":        [ ],
   "summary": {
-    "trace_count":     1,
+    "trace_count":     2,
+    "workspace_count": 2,
+    "complete":        true,
     "tags_fired":      3,
     "soul_versions":   [],
     "ledger_anchored": true
@@ -399,37 +411,36 @@ is the endpoint `await_outcome()` (§5.10) polls, and the target of the
 }
 ```
 
-Per-workspace reasoning traces live in `reasoning[]`; each carries its
-own `outcome`. There is **no top-level `outcome` key** — the resolved
-state of a frame is a property of each trace, not of the frame.
+Every entry in `reasoning[]` carries the `workspace_id` that produced it,
+so the N perspectives are distinguishable. `division_id` names the owning
+division; `workspace_ids` lists the workspaces the frame fanned out to;
+`workspace_id` echoes the caller's filter and is `null` for a
+division-scoped read.
 
-> **Known defect — `await_outcome()` does not work against this
-> endpoint as specified.** Two mismatches, both still open at 0.9.0:
->
-> 1. `workspace_id` is required here, and it is the wrong axis. Ingestion
->    is **division-scoped**: the server resolves the division from the
->    `subject_id` (Appendix A), then fans the frame out to every workspace
->    in that division — `n_workspaces` in §2.1 is exactly that count, and
->    one reasoning trace is produced per workspace. Asking the caller for
->    a single `workspace_id` makes them select 1 of N perspectives, which
->    contradicts `OutcomeResult.reasoning` (§7.3) being specified as
->    *per-workspace* traces, plural. The SDK is not missing a value it
->    should be sending — it is being asked for the wrong one.
-> 2. `OutcomeResult` (§7.3) is specified with a top-level `outcome`
->    discriminator, which this response does not carry; each entry in
->    `reasoning[]` carries its own. A poll loop keyed on the top-level
->    field never terminates and expires at `timeout`.
->
-> Both are tracked for 0.9.0. The fix does not need a new SDK parameter:
-> the division is already derivable from the `subject_id` the caller sent,
-> and separately from the API key, which resolves to a workspace and from
-> there to exactly one division. The open decision is whether the endpoint
-> returns the whole division's traces when `workspace_id` is omitted — the
-> shape `OutcomeResult` already promises — or keeps the parameter as an
-> optional filter for narrowing to one perspective.
->
-> Recorded rather than quietly omitted because it is the reason the method
-> is unusable, and because no contract-test fixture covers it (§11.1).
+#### Frame-level `outcome`
+
+A frame has no intrinsic outcome — it has one per workspace. `outcome` is
+a **fold** over `reasoning[]`, computed server-side so that four SDKs
+cannot arrive at four different answers, with this precedence:
+
+    failed  >  held  >  applied  >  no_change  >  skipped
+
+Severity first, deliberately: a caller testing `outcome == "applied"` must
+not be handed the more favourable of two perspectives when another
+workspace's reasoning errored. `outcome` is `null` when no trace has been
+recorded yet. The per-workspace value remains authoritative and is always
+available in `reasoning[]`.
+
+#### Completion
+
+`summary.complete` is `true` when every workspace the frame fanned out to
+has reported — that is, `trace_count >= workspace_count` with at least one
+trace. This is the termination condition for `await_outcome()` (§5.10),
+and it lines up with `n_workspaces` from the ingest ack (§2.1): that many
+traces are expected, and fewer means the fan-out is still running.
+
+Polling on anything else is wrong. A response that merely parses is not a
+finished story: the traces arrive as each workspace completes.
 
 ---
 
@@ -784,9 +795,24 @@ is not one of `EVENT_KINDS`. Throw a validation error when
 ### 5.10 `await_outcome(frame_id, timeout?) → OutcomeResult`
 
 Block until reasoning completes for a frame and return the outcome. Polls
-the frame story endpoint at a backoff interval (start 100ms, double to
-max 2s, cap at `timeout`). Raises `TimeoutError` (language-canonical) if
-the timeout is reached before reasoning completes.
+`GET /v1/frames/{frame_id}/story` (§2.7) at a backoff interval (start
+100ms, double to max 2s, cap at `timeout`). Raises `TimeoutError`
+if the timeout is reached before reasoning completes — raised as
+`ServerError` (§8.5) with `timed out` in the message. §8.5 carries no
+timeout row and all four SDKs already raise their `ServerError`
+equivalent; introducing a dedicated type would break every caller
+currently catching it, so it is deferred to the next minor.
+
+The poll MUST terminate on `summary.complete == true` and MUST NOT
+terminate merely because a response parsed — the story endpoint answers
+successfully throughout the fan-out, returning traces as each workspace
+finishes, so returning the first non-erroring response yields a
+half-finished story.
+
+The poll MUST NOT send `workspace_id`. The frame is division-scoped
+(§2.7); sending one narrows the result to a single perspective and makes
+`complete` mean "that workspace finished" rather than "reasoning
+finished".
 
 This is the **poll variant** of the three retrieval modes (poll, webhook,
 stream). Use it when the calling code needs a synchronous-feeling
@@ -798,9 +824,6 @@ Parameters:
 - `timeout?: float` — seconds, default 30.0. MUST cap at 120.0.
 
 Returns `OutcomeResult` (§7.3) with per-workspace reasoning results.
-
-> See the known defect in §2.7: against the current server this method
-> cannot succeed. Do not treat it as working surface at 0.9.0.
 
 ### 5.11 `close() → void`
 
@@ -948,7 +971,10 @@ Returned by `await_outcome()`.
 | Field             | Type                  | Notes                                          |
 |-------------------|-----------------------|------------------------------------------------|
 | `frame_id`        | string                | the frame that was reasoned                     |
-| `outcome`         | string                | `skipped` \| `no_change` \| `applied` \| `failed` |
+| `outcome`         | string?               | fold over `reasoning[]` — see §2.7. `skipped` \| `no_change` \| `applied` \| `failed` \| `held`. Null before any trace is recorded |
+| `division_id`     | string?               | division that owns the subject                 |
+| `workspace_ids`   | array<string>         | workspaces the frame fanned out to             |
+| `complete`        | boolean               | every workspace has reported (`summary.complete`) |
 | `error`           | object?               | `{code, message}` present only when failed     |
 | `tags_fired`      | array<tag_fired>      | tags that fired across all workspaces          |
 | `reasoning`       | array<trace>          | per-workspace reasoning traces                 |
@@ -969,7 +995,7 @@ And `trace` is:
 | Field             | Type                  | Notes                                          |
 |-------------------|-----------------------|------------------------------------------------|
 | `workspace_id`    | string                | workspace that produced this trace             |
-| `outcome`         | string                | per-workspace outcome                          |
+| `outcome`         | string                | per-workspace outcome — `skipped` \| `no_change` \| `applied` \| `failed` \| `held` |
 | `tags_proposed`   | array<tag_fired>?     | tags this workspace's reasoning proposed       |
 | `error`           | object?               | present only when per-workspace reasoning failed|
 
@@ -1298,11 +1324,19 @@ Stated plainly, because "conformance is green" is otherwise read as
 across 2 of the 7 endpoints in §2 (`/v1/agent-stream/event` and
 `/v1/cb/check`).
 
-No fixture covers `capture()`, `await_outcome()`, `conversation()`,
-`guard()`, `close()`, the notification-prefs pair (§5.12, §5.13), or the
-division-config pair (§5.14, §5.15). The absence is load-bearing: the
-`await_outcome()` defect recorded in §2.7 survived four SDK
-implementations precisely because nothing executes that path.
+`outcome-vectors.json` (added 0.8.1) exercises `await_outcome()`
+against the story endpoint (§2.7): that no `workspace_id` is sent, that
+the poll terminates on `summary.complete` rather than on the first
+response that parses, that `reasoning[].workspace_id` survives parsing,
+and that the server's `outcome` fold is reported verbatim rather than
+recomputed.
+
+No fixture covers `capture()`, `conversation()`, `guard()`, `close()`,
+the notification-prefs pair (§5.12, §5.13), or the division-config pair
+(§5.14, §5.15). The absence is load-bearing, and 0.8.1 is the proof: the
+`await_outcome()` defect survived four SDK implementations precisely
+because nothing executed that path, and every one of the four was broken
+in a different way when a fixture finally did.
 
 Nor does any fixture cover the state cache (§4.4). The corpus asserts on
 request and response envelopes, and a cache hit is the ABSENCE of a

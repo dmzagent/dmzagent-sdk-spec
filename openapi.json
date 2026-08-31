@@ -3,9 +3,9 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "DMZAgent SDK API",
-    "version": "0.8.0",
+    "version": "0.8.1",
     "summary": "The public surface every DMZAgent SDK speaks: emit events, check guards, and manage conversation settings.",
-    "description": "This document describes the wire contract in sdk-spec.md, and nothing beyond it.\n\nIt is deliberately narrow. The reasoning server exposes a much larger internal REST surface; the endpoints here are the ones the four SDKs (Python, TypeScript, Java, C#) are permitted to call, so an integrator can read the whole contract in one sitting.\n\nEvery request and response body references a schema in `schemas/`, which stays the single source of truth \u2014 the schemas are JSON Schema 2020-12, which OpenAPI 3.1 uses natively, so nothing is duplicated or restated here.\n\nSee sdk-spec.md for the parts a document like this cannot express: method naming per language, thread safety, resource lifecycle, and the contract-test corpus every SDK must pass.",
+    "description": "This document describes the wire contract in sdk-spec.md, and nothing beyond it.\n\nIt is deliberately narrow. The reasoning server exposes a much larger internal REST surface; the endpoints here are the ones the four SDKs (Python, TypeScript, Java, C#) are permitted to call, so an integrator can read the whole contract in one sitting.\n\nEvery request and response body references a schema in `schemas/`, which stays the single source of truth — the schemas are JSON Schema 2020-12, which OpenAPI 3.1 uses natively, so nothing is duplicated or restated here.\n\nSee sdk-spec.md for the parts a document like this cannot express: method naming per language, thread safety, resource lifecycle, and the contract-test corpus every SDK must pass.",
     "license": {
       "name": "Apache-2.0",
       "identifier": "Apache-2.0"
@@ -118,7 +118,7 @@
         ],
         "operationId": "checkGuard",
         "summary": "Check whether a subject or interaction is currently allowed to act",
-        "description": "Synchronous. `allow` is false only when `state` is open, and `warning` is true when `state` is half_open.\n\nAn open state is delivered as a normal 200 \u2014 it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
+        "description": "Synchronous. `allow` is false only when `state` is open, and `warning` is true when `state` is half_open.\n\nAn open state is delivered as a normal 200 — it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
         "requestBody": {
           "required": true,
           "content": {
@@ -343,8 +343,8 @@
         {
           "name": "workspace_id",
           "in": "query",
-          "required": true,
-          "description": "Which workspace's perspective to render. Required: a frame fans out to n_workspaces workspaces and the ingestion response does not return a workspace id, so an SDK holding only frame_id cannot supply this \u2014 see the known defect in sdk-spec.md \u00a72.7.",
+          "required": false,
+          "description": "Optional filter narrowing the story to one workspace's perspective. Omitted (the normal case), the whole division's traces are returned: ingestion is division-scoped, so the frame's natural scope is the division, not one of the n_workspaces it fanned out to. SDKs MUST NOT send this unless the caller explicitly asked to narrow.",
           "schema": {
             "type": "string"
           }
@@ -356,7 +356,7 @@
         ],
         "operationId": "getFrameStory",
         "summary": "Narrative lineage for a frame",
-        "description": "The endpoint await_outcome() polls and the target of the `follow_my_data` path returned by POST /v1/agent-stream/event. See sdk-spec.md \u00a72.7, including the recorded defect that await_outcome() cannot currently succeed against it.",
+        "description": "The endpoint await_outcome() polls and the target of the `follow_my_data` path returned by POST /v1/agent-stream/event. Division-scoped: poll until summary.complete is true. See sdk-spec.md §2.7.",
         "responses": {
           "200": {
             "description": "Frame lineage.",
@@ -392,7 +392,7 @@
       "post": {
         "operationId": "onOutcomeCompleted",
         "summary": "Per-workspace reasoning finished for a frame",
-        "description": "Delivered to a registered webhook URL as a CloudEvents 1.0 envelope. Verify the X-DMZAgent-Signature header before trusting the body \u2014 every SDK ships a verify_webhook_signature helper for this.",
+        "description": "Delivered to a registered webhook URL as a CloudEvents 1.0 envelope. Verify the X-DMZAgent-Signature header before trusting the body — every SDK ships a verify_webhook_signature helper for this.",
         "parameters": [
           {
             "$ref": "#/components/parameters/SignatureHeader"
@@ -500,7 +500,7 @@
         "name": "X-DMZAgent-Signature",
         "in": "header",
         "required": true,
-        "description": "`t=<unix>,v1=<hex>` \u2014 HMAC over the raw body with the subscription secret. The retired X-Concordex-Signature header carries the same value for a deprecation window.",
+        "description": "`t=<unix>,v1=<hex>` — HMAC over the raw body with the subscription secret. The retired X-Concordex-Signature header carries the same value for a deprecation window.",
         "schema": {
           "type": "string"
         }
@@ -604,10 +604,11 @@
       },
       "FrameStoryResponse": {
         "type": "object",
-        "description": "Narrative lineage for one frame (sdk-spec.md \u00a72.7). Per-workspace reasoning traces live in `reasoning[]`, each carrying its own `outcome`; there is no top-level `outcome` key.",
+        "description": "Narrative lineage for one frame (sdk-spec.md §2.7). Division-scoped: `reasoning[]` carries one entry per workspace the frame fanned out to, each naming its `workspace_id` and its own `outcome`. The top-level `outcome` is a fold over those with precedence failed > held > applied > no_change > skipped.",
         "required": [
           "frame_id",
-          "workspace_id"
+          "reasoning",
+          "summary"
         ],
         "properties": {
           "frame_id": {
@@ -616,8 +617,41 @@
           "subject_id": {
             "type": "string"
           },
+          "division_id": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Division that owns the subject."
+          },
           "workspace_id": {
-            "type": "string"
+            "type": [
+              "string",
+              "null"
+            ],
+            "description": "Echoes the caller's filter; null for a division-scoped read."
+          },
+          "workspace_ids": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Workspaces the frame fanned out to."
+          },
+          "outcome": {
+            "type": [
+              "string",
+              "null"
+            ],
+            "enum": [
+              "skipped",
+              "no_change",
+              "applied",
+              "failed",
+              "held",
+              null
+            ],
+            "description": "Fold over reasoning[]; null before any trace exists."
           },
           "occurred_at": {
             "type": "string",
@@ -640,9 +674,33 @@
           },
           "reasoning": {
             "type": "array",
-            "description": "One entry per workspace the frame fanned out to; each carries its own `outcome`.",
+            "description": "One entry per workspace the frame fanned out to.",
             "items": {
-              "type": "object"
+              "type": "object",
+              "required": [
+                "trace_id",
+                "workspace_id",
+                "outcome"
+              ],
+              "properties": {
+                "trace_id": {
+                  "type": "string"
+                },
+                "workspace_id": {
+                  "type": "string",
+                  "description": "Workspace that produced this trace."
+                },
+                "outcome": {
+                  "type": "string",
+                  "enum": [
+                    "skipped",
+                    "no_change",
+                    "applied",
+                    "failed",
+                    "held"
+                  ]
+                }
+              }
             }
           },
           "soul_changes": {
@@ -675,8 +733,21 @@
               },
               "ledger_anchored": {
                 "type": "boolean"
+              },
+              "workspace_count": {
+                "type": "integer",
+                "description": "Workspaces expected to report."
+              },
+              "complete": {
+                "type": "boolean",
+                "description": "Every workspace has reported. The termination condition for await_outcome()."
               }
-            }
+            },
+            "required": [
+              "trace_count",
+              "workspace_count",
+              "complete"
+            ]
           }
         }
       }
@@ -723,7 +794,7 @@
         }
       },
       "UnprocessableError": {
-        "description": "Well-formed but unprocessable \u2014 a bad event or rulebook. SDKs raise ValidationError.",
+        "description": "Well-formed but unprocessable — a bad event or rulebook. SDKs raise ValidationError.",
         "content": {
           "application/json": {
             "schema": {
