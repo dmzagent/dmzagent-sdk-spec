@@ -1168,6 +1168,13 @@ reason to also refuse it here is that a caller who has not got a human's
 identity at this point does not have a human, and the failure should
 land where the mistake is.
 
+The message MUST name the parameter **as that SDK spells it** — `actorId`
+where the binding is camelCase — not the canonical wire key. The corpus
+asserts the substring `actor` for exactly this reason: a vector that
+demanded `actor_id` would be satisfiable only by the one binding that
+spells it that way, and would have every other SDK name a parameter its
+callers do not have.
+
 Convenience wrappers `approve_approval(...)` / `decline_approval(...)`
 MAY be offered. If they are, they take the same required `actor_id` and
 MUST NOT be reachable without it.
