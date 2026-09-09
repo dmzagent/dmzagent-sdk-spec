@@ -1,0 +1,76 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/approval.json",
+  "title": "Approval",
+  "description": "An action held pending a human decision. Rendered by the customer in their own product: no field carries DMZAgent presentation (sdk-spec.md 2.8).",
+  "type": "object",
+  "required": ["approval_id", "status", "subject_id", "action", "requested_at", "expires_at", "on_expiry"],
+  "properties": {
+    "approval_id":    { "type": "string" },
+    "status":         { "type": "string", "enum": ["pending", "approved", "declined", "expired"] },
+    "subject_id":     { "type": "string" },
+    "interaction_id": { "type": ["string", "null"] },
+    "frame_id":       { "type": ["string", "null"] },
+    "action": {
+      "type": "object",
+      "description": "The held call, verbatim. The caller named its own tools and is the only party that can describe them.",
+      "required": ["tool"],
+      "properties": {
+        "tool": { "type": "string" },
+        "args": { "type": "object" }
+      }
+    },
+    "reason": {
+      "type": "string",
+      "description": "The operator's own policy words, not text DMZAgent wrote for an end user."
+    },
+    "fired_policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cb_policy_id", "name", "action"],
+        "properties": {
+          "cb_policy_id": { "type": "string" },
+          "name":         { "type": "string" },
+          "action":       { "type": "string", "enum": ["warn", "open", "require_approval"] }
+        }
+      }
+    },
+    "requested_at": { "type": "string", "format": "date-time" },
+    "expires_at":   { "type": "string", "format": "date-time" },
+    "on_expiry": {
+      "type": "string",
+      "enum": ["decline"],
+      "description": "Always decline. An approval that becomes an allow because nobody looked at it is not a human-in-the-loop control."
+    },
+    "anchor": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["ledger_index", "hash"],
+          "properties": {
+            "ledger_index": { "type": "integer" },
+            "hash":         { "type": "string" }
+          }
+        }
+      ]
+    },
+    "decision": {
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["decision", "actor_id", "decided_at"],
+          "properties": {
+            "decision":    { "type": "string", "enum": ["approve", "decline"] },
+            "actor_id":    { "type": "string", "description": "The deciding human, in the customer's own namespace. Opaque here." },
+            "actor_label": { "type": ["string", "null"] },
+            "reason":      { "type": ["string", "null"] },
+            "decided_at":  { "type": "string", "format": "date-time" }
+          }
+        }
+      ]
+    }
+  }
+}

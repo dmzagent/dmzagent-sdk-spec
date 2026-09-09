@@ -89,6 +89,9 @@ jobs:
               # Special form used by error-mapping.json to exercise the
               # raise_on_open path of cx.guard().
               "guard_with_raise_on_open",
+              # 0.10.0 — the white-label human-in-the-loop control and the
+              # readable ledger (spec 2.8-2.10).
+              "list_approvals", "decide_approval", "get_incidents",
           }
           for fx in ge["fixtures"]:
               for k in ("name", "method", "args", "expected_path", "expected_body"):

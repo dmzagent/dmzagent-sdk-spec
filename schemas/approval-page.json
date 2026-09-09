@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/approval-page.json",
+  "title": "ApprovalPage",
+  "description": "Response body for GET /v1/approvals. One page; next_cursor is null on the last.",
+  "type": "object",
+  "required": ["approvals"],
+  "properties": {
+    "approvals": {
+      "type": "array",
+      "items": { "$ref": "https://spec.dmzagent.com/schemas/approval.json" }
+    },
+    "next_cursor": { "type": ["string", "null"] }
+  }
+}

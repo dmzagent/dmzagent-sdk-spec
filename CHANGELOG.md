@@ -7,6 +7,90 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+## [0.10.0] — 2026-09-09
+
+### Added
+- **A white-label human-in-the-loop control (§2.8, §2.9, §5.16–§5.18).**
+  A circuit-breaker policy can now fire with action `require_approval`,
+  which holds the action rather than refusing it, and the customer
+  renders the decision inside their own product.
+
+  The white-label part is a constraint on what these payloads may
+  contain, not a theme: **no field carries DMZAgent presentation.**
+  There is no message written for an end user, no logo, no copy.
+  `reason` and `fired_policies[].name` are the operator's own policy
+  words, and `action` is the held call verbatim, because the caller
+  named its own tools and is the only party that can describe them. An
+  SDK MUST NOT synthesise display text from these fields — a field that
+  renders the same in every customer's product is a field we branded,
+  which is the thing this endpoint exists to avoid.
+
+  `actor_id` is REQUIRED on a decision and is the customer's own
+  identifier for the deciding human. DMZAgent resolves it against no
+  directory, which is what lets the customer's users decide without
+  ever holding an account here. SDKs reject an empty one locally: a
+  caller who has not got a human's identity at this point does not have
+  a human, and the failure should land where the mistake is.
+
+- **`pending_approval_id` on the check response (§2.2, §7.5).** The one
+  field that tells a caller which kind of `allow = false` they were
+  handed: a refusal, or an ask. It is additive on purpose — an SDK that
+  does not know about approvals still reads `allow` and still refuses,
+  because the alternative is an older client that starts allowing what
+  it used to deny.
+
+- **The incident and remediation ledger is readable (§2.10, §5.19,
+  §5.20).** `anchor: {ledger_index, hash}` has been returned since
+  0.5.0 and pointed into a ledger no SDK could open. `GET /v1/incidents`
+  opens it: every breaker that opened, every approval decided, every
+  remediation that ran — and a caller who recorded an anchor at check
+  time can now find exactly that entry and compare hashes. An anchor
+  that does not match is the one alarm this endpoint exists to make
+  possible.
+
+  It is **append-only**: no `PATCH`, no `DELETE`, no endpoint that
+  closes an incident. A remediation is appended and `status` is a fold
+  over what has been appended, so §5.21 forbids an SDK from offering a
+  `close_incident` convenience that describes a ledger this is not.
+
+  Ordered by `ledger_index` descending, never by `opened_at` — two
+  incidents opened in the same second have an order, and it is the one
+  the ledger recorded, not whatever a timestamp tiebreak produces.
+
+- **`approval.requested`, `approval.decided`, `incident.opened`,
+  `incident.remediated` webhooks (§9.2).** The push half of the same
+  control. Documented with the failure they invite: delivery is
+  at-least-once and not guaranteed, `expires_at` runs regardless, and a
+  customer who builds only on the webhook holds actions that quietly
+  expire.
+
+### Changed
+- **`ConflictError` also covers a settled approval (§3).** Same type,
+  same reasoning: the call did not fail, it lost. Retrying cannot win,
+  and an SDK that treats it as transient turns a second operator's
+  decline into a retry loop against a decision that already stands. The
+  body carries the approval's current `status`, which is how a caller
+  tells the two 409s apart.
+- **`fired_policies[].action` has an enum** — `warn`, `open`,
+  `require_approval` — where it was previously an open string.
+
+### Notes
+- **Expiry fails closed and is not configurable.** `on_expiry` is
+  `decline`, and SDKs MUST NOT offer a way to make it `approve`. An
+  approval that becomes an allow because nobody looked at it is not a
+  human-in-the-loop control; it is a delay with extra steps.
+- **No auto-pagination (§5.16).** A caller who asked for 25 got 25.
+  `iter_approvals` / `iter_incidents` exist for the walk and have to be
+  named, because a method that quietly follows every cursor turns one
+  bounded request into an unbounded one against a record that only
+  grows.
+- Contract vectors for the new surface are in
+  `contract-tests/golden-envelopes.json` and `error-mapping.json`.
+  Python implements 0.10.0 first; TypeScript, C# and Java stay pinned
+  at 0.9.0 until they follow, and `promote.yml` gates the coordinated
+  release on all four being at the same version.
+
+
 ## [0.9.0] — 2026-08-31
 
 ### Added

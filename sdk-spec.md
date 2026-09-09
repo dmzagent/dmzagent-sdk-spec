@@ -1,8 +1,8 @@
 # DMZAgent SDK Specification
 
-**Version:** see [`VERSION`](./VERSION) — currently `0.9.0`
+**Version:** see [`VERSION`](./VERSION) — currently `0.10.0`
 **Status:** pre-1.0 (MINOR bumps may include breaking wire changes)
-**Last updated:** 2026-08-31
+**Last updated:** 2026-09-09
 
 This document defines the public surface every DMZAgent SDK MUST
 implement. Every language binding — Python, TypeScript, C#, Java — is a
@@ -10,7 +10,7 @@ translation of this surface. Same constructor shape, same methods (under
 language-idiomatic naming), same return types, same error hierarchy,
 same wire protocol.
 
-A spec tag (`v0.9.0`) corresponds 1:1 to a release tag in every SDK
+A spec tag (`v0.10.0`) corresponds 1:1 to a release tag in every SDK
 repository. No SDK ships a version the spec hasn't blessed.
 
 ---
@@ -74,8 +74,8 @@ SDKs MUST set:
 User-Agent: dmzagent-<language>/<spec-version>
 ```
 
-Examples: `dmzagent-python/0.9.0`, `dmzagent-typescript/0.9.0`,
-`dmzagent-csharp/0.9.0`, `dmzagent-java/0.9.0`. Optional suffix in the
+Examples: `dmzagent-python/0.10.0`, `dmzagent-typescript/0.10.0`,
+`dmzagent-csharp/0.10.0`, `dmzagent-java/0.10.0`. Optional suffix in the
 form `(<runtime-info>)` is permitted.
 
 ### 1.5 Timeout
@@ -243,7 +243,8 @@ method; the SDK derives `scope` and `scope_ref` from which was set.
   "anchor": null,
   "checked_at": "2026-05-30T12:00:00Z",
   "latency_ms": 12.3,
-  "route_latency_ms": 18.7
+  "route_latency_ms": 18.7,
+  "pending_approval_id": null
 }
 ```
 
@@ -252,7 +253,21 @@ method; the SDK derives `scope` and `scope_ref` from which was set.
 `warning` is `true` when `state == half_open`.
 
 `fired_policies` is an array of `{cb_policy_id, name, action}` objects.
+`action` ∈ {`warn`, `open`, `require_approval`}.
 `anchor` is an object `{ledger_index, hash}` or `null`.
+
+`pending_approval_id` is the approval this check is waiting on, or
+`null`. It is non-null only when a policy fired with action
+`require_approval` and no human has decided yet — and in that case
+`allow` is `false`, because an action awaiting approval has not been
+approved.
+
+**A denial that names an approval is a different denial.** A caller who
+gets `allow=false` with no `pending_approval_id` has been refused;
+a caller who gets one has been asked. That is the whole difference
+between a breaker and a human-in-the-loop control, and it is one field
+because the caller has to branch on it: refuse the user, or show them
+the approval and wait (§2.8).
 
 ---
 
@@ -444,6 +459,230 @@ finished story: the traces arrive as each workspace completes.
 
 ---
 
+### 2.8 GET /v1/approvals
+
+List approvals awaiting a human decision.
+
+An approval exists because a circuit-breaker policy fired with action
+`require_approval` (§2.2). The action it guards has **not** run and will
+not run until a human decides. The customer renders that decision in
+their own product; this endpoint is what they render it from.
+
+#### Query parameters
+
+| Parameter    | Type    | Required | Notes                                                       |
+|--------------|---------|----------|-------------------------------------------------------------|
+| `status`     | enum    | no       | `pending` \| `approved` \| `declined` \| `expired`; default `pending` |
+| `subject_id` | string  | no       | restrict to one subject                                      |
+| `limit`      | integer | no       | 1–100, default 25                                            |
+| `cursor`     | string  | no       | opaque; from a previous response's `next_cursor`             |
+
+#### Response body
+
+```json
+{
+  "approvals": [
+    {
+      "approval_id":   "apr_7f3c9a1b",
+      "status":        "pending",
+      "subject_id":    "user:ws_xxx:checkout-bot",
+      "interaction_id": "ix_2b8e",
+      "frame_id":      "fr_91ac",
+      "action":        {"tool": "refund.issue", "args": {"amount": 9900}},
+      "reason":        "refund above the reviewed ceiling",
+      "fired_policies": [
+        {"cb_policy_id": "cbp_11", "name": "refund ceiling", "action": "require_approval"}
+      ],
+      "requested_at":  "2026-09-09T12:00:00Z",
+      "expires_at":    "2026-09-09T12:15:00Z",
+      "on_expiry":     "decline",
+      "anchor":        {"ledger_index": 40197, "hash": "b1c4…"},
+      "decision":      null
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+`next_cursor` is `null` on the last page.
+
+#### The white-label contract
+
+Everything needed to render the decision is in the approval object, and
+**nothing in it is DMZAgent's presentation**. There is no message string
+written for an end user, no logo, no colour, no copy. `reason` and
+`fired_policies[].name` are the operator's own policy names — the words
+the customer chose when they wrote the policy — so a customer's UI shows
+their vocabulary, not ours.
+
+An SDK MUST NOT synthesise display text from these fields. A field that
+renders the same in every customer's product is a field DMZAgent has
+branded, which is the thing this endpoint exists to avoid.
+
+`action` is the call the agent was about to make, verbatim: the caller
+already knows how to describe its own tools, and is the only party that
+does.
+
+---
+
+### 2.9 POST /v1/approvals/{approval_id}/decision
+
+Approve or decline a pending approval.
+
+#### Path parameters
+
+| Parameter     | Type   | Notes                                  |
+|---------------|--------|----------------------------------------|
+| `approval_id` | string | as returned by §2.8                     |
+
+#### Request body
+
+| Field         | Type   | Required | Notes                                                     |
+|---------------|--------|----------|-----------------------------------------------------------|
+| `decision`    | enum   | yes      | `approve` \| `decline`                                     |
+| `actor_id`    | string | yes      | the deciding human, in the **customer's** namespace        |
+| `reason`      | string | no       | free text, recorded on the ledger entry                    |
+| `actor_label` | string | no       | display name for the customer's own audit view             |
+
+#### Response body
+
+The decided approval object (§2.8 shape) with `status` no longer
+`pending` and `decision` populated:
+
+```json
+{
+  "approval_id": "apr_7f3c9a1b",
+  "status":      "approved",
+  "decision": {
+    "decision":    "approve",
+    "actor_id":    "acct_4471",
+    "actor_label": "Dana R.",
+    "reason":      "verified the order by phone",
+    "decided_at":  "2026-09-09T12:04:31Z"
+  },
+  "anchor": {"ledger_index": 40202, "hash": "9ee0…"}
+}
+```
+
+#### A human decided, and the record says which one
+
+`actor_id` is required, and an SDK MUST NOT default it, derive it from
+the API key, or send a placeholder. The key identifies the *integration*;
+the point of a human-in-the-loop control is that a *person* is on the
+other end of it, and an approval whose actor is the integration that
+requested it records nobody.
+
+DMZAgent does not resolve `actor_id` against any directory. It is opaque,
+it is the customer's own identifier, and it is stored and returned as
+given — which is what keeps the flow white-label: the customer's users
+never need accounts here.
+
+#### Deciding twice
+
+A second decision on an already-decided approval is `409` →
+`ConflictError`. It is not an error to retry the *same* call — an
+`Idempotency-Key` (§1.8) replays the original decision rather than
+conflicting. Without one, two operators who click at the same moment
+produce one decision and one conflict, and the conflict is the honest
+answer: the approval was already settled, by someone else.
+
+An approval past `expires_at` is `409` as well, with `status: "expired"`
+in the body. The window closing is not a decision the second operator
+can win.
+
+#### Expiry fails closed
+
+`on_expiry` is `decline` and an SDK MUST NOT offer a way to change it to
+`approve`. An approval that becomes an allow because nobody looked at it
+is not a human-in-the-loop control; it is a delay with extra steps.
+
+---
+
+### 2.10 GET /v1/incidents
+
+The incident and remediation ledger.
+
+Every breaker that opened, every approval that was decided, and every
+remediation that ran is an entry. This is the append-only record behind
+the `anchor` that §2.2, §2.8 and §2.9 return — the same
+`{ledger_index, hash}` a caller was handed at the time, now readable.
+
+#### Query parameters
+
+| Parameter    | Type    | Required | Notes                                                        |
+|--------------|---------|----------|--------------------------------------------------------------|
+| `status`     | enum    | no       | `open` \| `remediated` \| `accepted` \| `all`; default `all`  |
+| `subject_id` | string  | no       | restrict to one subject                                       |
+| `since`      | string  | no       | ISO-8601; entries at or after this instant                    |
+| `until`      | string  | no       | ISO-8601; entries strictly before this instant                |
+| `limit`      | integer | no       | 1–100, default 25                                             |
+| `cursor`     | string  | no       | opaque; from a previous response's `next_cursor`              |
+
+#### Response body
+
+```json
+{
+  "incidents": [
+    {
+      "incident_id":  "inc_5d2a70",
+      "status":       "remediated",
+      "kind":         "cb_open",
+      "subject_id":   "user:ws_xxx:checkout-bot",
+      "frame_id":     "fr_91ac",
+      "opened_at":    "2026-09-09T11:58:02Z",
+      "closed_at":    "2026-09-09T12:04:31Z",
+      "reason":       "refund above the reviewed ceiling",
+      "fired_policies": [
+        {"cb_policy_id": "cbp_11", "name": "refund ceiling", "action": "require_approval"}
+      ],
+      "remediations": [
+        {
+          "remediation_id": "rem_88fe",
+          "kind":           "approval",
+          "approval_id":    "apr_7f3c9a1b",
+          "outcome":        "approved",
+          "actor_id":       "acct_4471",
+          "reason":         "verified the order by phone",
+          "occurred_at":    "2026-09-09T12:04:31Z",
+          "anchor":         {"ledger_index": 40202, "hash": "9ee0…"}
+        }
+      ],
+      "anchor": {"ledger_index": 40197, "hash": "b1c4…"}
+    }
+  ],
+  "next_cursor": "eyJpIjo0MDE5N30"
+}
+```
+
+`kind` ∈ {`cb_open`, `cb_half_open`, `policy_fired`, `approval_required`}.
+`remediations[].kind` ∈ {`approval`, `policy_change`, `manual`, `auto`}.
+`remediations` is ordered oldest first and MAY be empty — an incident
+nobody has answered yet is an incident with no remediation, not an
+absent incident.
+
+#### Ordering
+
+Entries are returned newest first, ordered by `ledger_index` descending —
+never by `opened_at`. Two incidents opened in the same second have an
+order, and it is the order the ledger recorded them in; sorting by a
+timestamp that cannot separate them re-orders them by whatever the
+tiebreak happens to be.
+
+#### The ledger is append-only
+
+There is no `PATCH`, no `DELETE`, and no endpoint that closes an
+incident. A remediation is *appended*; the incident's `status` is a fold
+over what has been appended to it. An SDK MUST NOT expose a method that
+implies otherwise.
+
+`anchor` on the incident is the entry that opened it. `anchor` on each
+remediation is that remediation's own entry. A caller who recorded an
+anchor at check time (§2.2) can find exactly that entry here and compare
+hashes; an anchor that does not match the ledger is the one alarm this
+endpoint exists to make possible.
+
+---
+
 ## 3. Error handling
 
 The server returns standard HTTP status codes. Every SDK MUST map them
@@ -454,7 +693,7 @@ to a typed exception hierarchy:
 | 400    | `ValidationError`   | malformed payload                    |
 | 401    | `AuthError`         | API key missing / invalid / revoked  |
 | 403    | `PermissionError`   | key valid but lacks scope            |
-| 409    | `ConflictError`     | an `Idempotency-Key` request is already in flight (§1.8) |
+| 409    | `ConflictError`     | an `Idempotency-Key` request is already in flight (§1.8), or an approval is already decided or expired (§2.9) |
 | 422    | `ValidationError`   | well-formed but unprocessable (bad event / rulebook) |
 | 429    | `RateLimitError`    | rate cap reached — retry after `Retry-After` |
 | 5xx    | `ServerError`       | transient — safe to retry            |
@@ -483,6 +722,12 @@ duplicate is the caller's own earlier request, still running. Retrying
 the same `Idempotency-Key` after a short pause returns the original
 response rather than a second side effect. SDKs MUST NOT retry it
 automatically (§1.8).
+
+The same type covers a settled approval (§2.9) for the same reason: the
+call did not fail, it lost. Retrying cannot win, and an SDK that treats
+it as transient turns a second operator's decline into a retry loop
+against a decision that already stands. The body carries the approval's
+current `status`, which is how a caller tells the two 409s apart.
 
 `CBOpenError` additionally exposes:
 
@@ -871,6 +1116,97 @@ Returns `DivisionConfig` (§7.9).
 
 ---
 
+### 5.16 `list_approvals(status?, subject_id?, limit?, cursor?) → ApprovalPage`
+
+List approvals awaiting a human decision (§2.8). This is the read half
+of the white-label human-in-the-loop control: the caller renders these
+in their own product.
+
+- `status: string` — OPTIONAL, default `pending`
+- `subject_id: string` — OPTIONAL
+- `limit: integer` — OPTIONAL, 1–100, default 25
+- `cursor: string` — OPTIONAL
+
+Returns `ApprovalPage` (§7.11).
+
+An SDK MUST NOT auto-paginate inside this method. A caller who asked for
+25 got 25, and a method that quietly walks every page turns one bounded
+request into an unbounded one against a ledger that only grows. Offer
+`iter_approvals()` (§5.17) for callers who want the walk, and make them
+name it.
+
+---
+
+### 5.17 `iter_approvals(...) → iterator<Approval>`
+
+Lazy iteration over §5.16, following `next_cursor` until it is `null`.
+Same parameters minus `cursor`.
+
+Each language exposes its idiomatic lazy sequence: a generator in
+Python, an async iterable in TypeScript, `IAsyncEnumerable` in C#, a
+`Stream` in Java. An SDK MUST fetch a page only when the consumer asks
+for an item beyond the ones it holds — a method named for laziness that
+buffers everything first is the auto-pagination §5.16 refuses, renamed.
+
+---
+
+### 5.18 `decide_approval(approval_id, decision, actor_id, reason?, actor_label?) → Approval`
+
+Approve or decline (§2.9).
+
+- `approval_id: string` — REQUIRED
+- `decision: string` — REQUIRED, `approve` | `decline`
+- `actor_id: string` — REQUIRED, the deciding human in the caller's own namespace
+- `reason: string` — OPTIONAL
+- `actor_label: string` — OPTIONAL
+
+Returns the decided `Approval` (§7.12).
+
+An SDK MUST reject an empty or missing `actor_id` locally, as a
+`ValidationError`, without a round trip. The server rejects it too; the
+reason to also refuse it here is that a caller who has not got a human's
+identity at this point does not have a human, and the failure should
+land where the mistake is.
+
+Convenience wrappers `approve_approval(...)` / `decline_approval(...)`
+MAY be offered. If they are, they take the same required `actor_id` and
+MUST NOT be reachable without it.
+
+---
+
+### 5.19 `get_incidents(status?, subject_id?, since?, until?, limit?, cursor?) → IncidentPage`
+
+Read the incident and remediation ledger (§2.10).
+
+- `status: string` — OPTIONAL, default `all`
+- `subject_id: string` — OPTIONAL
+- `since: string` — OPTIONAL, ISO-8601
+- `until: string` — OPTIONAL, ISO-8601
+- `limit: integer` — OPTIONAL, 1–100, default 25
+- `cursor: string` — OPTIONAL
+
+Returns `IncidentPage` (§7.13). The same no-auto-pagination rule as
+§5.16 applies.
+
+---
+
+### 5.20 `iter_incidents(...) → iterator<Incident>`
+
+Lazy iteration over §5.19, on the terms of §5.17.
+
+---
+
+### 5.21 What the SDK does not offer
+
+There is no `close_incident`, no `resolve_incident`, and no method that
+edits a ledger entry, because §2.10 has no endpoint for one. An SDK MUST
+NOT add a client-side convenience that reads as closing an incident —
+appending an approval decision is how an incident reaches
+`remediated`, and a method that says otherwise describes a ledger this
+one is not.
+
+---
+
 ## 6. Conversation handle
 
 A stateful helper for the common single-agent-with-customer case (and
@@ -1017,7 +1353,14 @@ Returned by `check()`.
 | `cached`           | boolean         | served from the state cache (§4.4)                |
 | `cache_age`        | duration        | age of the cache entry when served; zero if fresh |
 | `stale`            | boolean         | the check failed; this is the last known state    |
+| `pending_approval_id` | string \| null | the approval this denial is waiting on (§2.2)  |
 | `raw`              | object          | the full server JSON response                    |
+
+`pending_approval_id` is non-null only alongside `allow = false`. A
+caller branching on `allow` alone still behaves correctly — it refuses —
+which is why this field was added rather than a new state: an SDK that
+did not know about approvals must not start allowing what it used to
+deny.
 
 `cached`, `cache_age` and `stale` describe how the caller got this
 result, and have no counterpart on the wire. A client with the cache
@@ -1072,7 +1415,82 @@ The `config` object is the division's free-form configuration. Canonical
 keys recognized by the server include `reasoning_mode` (`"per_frame"` or
 `"per_trace"`, see §1.7).
 
-### 7.10 Immutability
+### 7.11 `ApprovalPage`
+
+Returned by `list_approvals()`.
+
+| Field         | Type             | Notes                                    |
+|---------------|------------------|------------------------------------------|
+| `approvals`   | array<Approval>  | this page, newest first                  |
+| `next_cursor` | string \| null   | null on the last page                    |
+| `raw`         | object           | the full server JSON response            |
+
+### 7.12 `Approval`
+
+An item of `ApprovalPage.approvals`, and the return of
+`decide_approval()`.
+
+| Field             | Type            | Notes                                                  |
+|-------------------|-----------------|--------------------------------------------------------|
+| `approval_id`     | string          |                                                        |
+| `status`          | enum            | `pending` \| `approved` \| `declined` \| `expired`   |
+| `subject_id`      | string          | the subject whose action is held                        |
+| `interaction_id`  | string?         |                                                        |
+| `frame_id`        | string?         |                                                        |
+| `action`          | object          | `{tool, args}` — the held call, verbatim                |
+| `reason`          | string          | the operator's own policy words (§2.8)                  |
+| `fired_policies`  | array<object>   | `[{cb_policy_id, name, action}]`                       |
+| `requested_at`    | string          | ISO-8601                                                |
+| `expires_at`      | string          | ISO-8601                                                |
+| `on_expiry`       | enum            | always `decline` (§2.9)                                 |
+| `anchor`          | object \| null  | `{ledger_index, hash}`                                 |
+| `decision`        | object \| null  | `{decision, actor_id, actor_label, reason, decided_at}` |
+| `raw`             | object          | the full server JSON response                           |
+
+`decision` is `null` while `status` is `pending` or `expired`.
+
+An SDK MUST expose `expires_at` as the language's instant type where it
+has one, and MUST NOT expose a "seconds remaining" derived at parse
+time. A countdown computed when the object was built is wrong by however
+long the caller held it, and a caller rendering an approval deadline is
+exactly the caller who will hold it.
+
+### 7.13 `IncidentPage`
+
+Returned by `get_incidents()`.
+
+| Field         | Type             | Notes                                    |
+|---------------|------------------|------------------------------------------|
+| `incidents`   | array<Incident>  | this page, newest `ledger_index` first   |
+| `next_cursor` | string \| null   | null on the last page                    |
+| `raw`         | object           | the full server JSON response            |
+
+### 7.14 `Incident`
+
+| Field            | Type                | Notes                                                       |
+|------------------|---------------------|-------------------------------------------------------------|
+| `incident_id`    | string              |                                                             |
+| `status`         | enum                | `open` \| `remediated` \| `accepted`                       |
+| `kind`           | enum                | `cb_open` \| `cb_half_open` \| `policy_fired` \| `approval_required` |
+| `subject_id`     | string              |                                                             |
+| `frame_id`       | string?             |                                                             |
+| `opened_at`      | string              | ISO-8601                                                    |
+| `closed_at`      | string?             | ISO-8601, null while open                                   |
+| `reason`         | string              |                                                             |
+| `fired_policies` | array<object>       | `[{cb_policy_id, name, action}]`                           |
+| `remediations`   | array<Remediation>  | oldest first, MAY be empty                                  |
+| `anchor`         | object \| null      | the entry that opened the incident                          |
+| `raw`            | object              | the full server JSON response                               |
+
+`Remediation` carries `remediation_id`, `kind`
+(`approval` \| `policy_change` \| `manual` \| `auto`), `approval_id?`,
+`outcome`, `actor_id?`, `reason?`, `occurred_at`, and its own `anchor`.
+
+An incident with `remediations` empty and `status` `open` is the normal
+shape of something nobody has answered yet. An SDK MUST NOT collapse it
+to null, an empty result, or an error.
+
+### 7.15 Immutability
 
 Result types MUST be immutable in the language (Python `@dataclass(frozen=True)`,
 TypeScript `readonly`, C# `record`, Java `record`).
@@ -1098,6 +1516,11 @@ your SDK MUST expose.
 | `CheckResult`        | `CheckResult`      | `CheckResult`      | `CheckResult` (record) | `CheckResult` (record) |
 | `NotificationPrefs`  | `NotificationPrefs`| `NotificationPrefs`| `NotificationPrefs` (record) | `NotificationPrefs` (record) |
 | `DivisionConfig`     | `DivisionConfig`   | `DivisionConfig`   | `DivisionConfig` (record)    | `DivisionConfig` (record)    |
+| `ApprovalPage`       | `ApprovalPage`     | `ApprovalPage`     | `ApprovalPage` (record) | `ApprovalPage` (record) |
+| `Approval`           | `Approval`         | `Approval`         | `Approval` (record) | `Approval` (record) |
+| `IncidentPage`       | `IncidentPage`     | `IncidentPage`     | `IncidentPage` (record) | `IncidentPage` (record) |
+| `Incident`           | `Incident`         | `Incident`         | `Incident` (record) | `Incident` (record) |
+| `Remediation`        | `Remediation`      | `Remediation`      | `Remediation` (record) | `Remediation` (record) |
 | `EVENT_KINDS`        | `EVENT_KINDS`      | `EVENT_KINDS`      | `EventKinds.All`    | `EventKinds.ALL`   |
 
 ### 8.2 Methods
@@ -1120,6 +1543,13 @@ your SDK MUST expose.
 | `update_notification_prefs` | `update_notification_prefs` | `updateNotificationPrefs` | `UpdateNotificationPrefs` | `updateNotificationPrefs` |
 | `get_division_config` | `get_division_config` | `getDivisionConfig` | `GetDivisionConfig` | `getDivisionConfig` |
 | `update_division_config` | `update_division_config` | `updateDivisionConfig` | `UpdateDivisionConfig` | `updateDivisionConfig` |
+| `list_approvals`   | `list_approvals`   | `listApprovals`     | `ListApprovals`     | `listApprovals`     |
+| `iter_approvals`   | `iter_approvals`   | `iterApprovals`     | `IterApprovals`     | `iterApprovals`     |
+| `decide_approval`  | `decide_approval`  | `decideApproval`    | `DecideApproval`    | `decideApproval`    |
+| `approve_approval` | `approve_approval` | `approveApproval`   | `ApproveApproval`   | `approveApproval`   |
+| `decline_approval` | `decline_approval` | `declineApproval`   | `DeclineApproval`   | `declineApproval`   |
+| `get_incidents`    | `get_incidents`    | `getIncidents`      | `GetIncidents`      | `getIncidents`      |
+| `iter_incidents`   | `iter_incidents`   | `iterIncidents`     | `IterIncidents`     | `iterIncidents`     |
 
 ### 8.3 Constructor parameters
 
@@ -1167,6 +1597,20 @@ your SDK MUST expose.
 | `whatsapp_enabled`   | `whatsapp_enabled`  | `whatsappEnabled`    | `WhatsappEnabled`    | `whatsappEnabled`       |
 | `webhook_url`        | `webhook_url`       | `webhookUrl`         | `WebhookUrl`         | `webhookUrl`            |
 | `config`             | `config`            | `config`             | `Config`             | `config`                |
+| `approval_id`        | `approval_id`       | `approvalId`         | `ApprovalId`         | `approvalId`            |
+| `pending_approval_id`| `pending_approval_id`| `pendingApprovalId` | `PendingApprovalId`  | `pendingApprovalId`     |
+| `actor_id`           | `actor_id`          | `actorId`            | `ActorId`            | `actorId`               |
+| `actor_label`        | `actor_label`       | `actorLabel`         | `ActorLabel`         | `actorLabel`            |
+| `expires_at`         | `expires_at`        | `expiresAt`          | `ExpiresAt`          | `expiresAt`             |
+| `on_expiry`          | `on_expiry`         | `onExpiry`           | `OnExpiry`           | `onExpiry`              |
+| `decided_at`         | `decided_at`        | `decidedAt`          | `DecidedAt`          | `decidedAt`             |
+| `incident_id`        | `incident_id`       | `incidentId`         | `IncidentId`         | `incidentId`            |
+| `remediation_id`     | `remediation_id`    | `remediationId`      | `RemediationId`      | `remediationId`         |
+| `remediations`       | `remediations`      | `remediations`       | `Remediations`       | `remediations`          |
+| `opened_at`          | `opened_at`         | `openedAt`           | `OpenedAt`           | `openedAt`              |
+| `closed_at`          | `closed_at`         | `closedAt`           | `ClosedAt`           | `closedAt`              |
+| `occurred_at`        | `occurred_at`       | `occurredAt`         | `OccurredAt`         | `occurredAt`            |
+| `next_cursor`        | `next_cursor`       | `nextCursor`         | `NextCursor`         | `nextCursor`            |
 
 ### 8.5 Exceptions
 
@@ -1233,6 +1677,22 @@ depends on the event type.
 | `review.resolved`    | A human resolved or dismissed a review | `ReviewEvent` (§7.6) |
 | `review.updated`     | A review was claimed, escalated, or reinforced | `ReviewEvent` (§7.6) |
 | `outcome.completed`  | Per-workspace reasoning finished for a frame | `OutcomeEvent` |
+| `approval.requested` | A policy fired `require_approval` and an action is held | `Approval` (§7.12) |
+| `approval.decided`   | A human approved or declined an approval | `Approval` (§7.12) |
+| `incident.opened`    | A ledger entry opened an incident | `Incident` (§7.14) |
+| `incident.remediated`| A remediation was appended to an incident | `Incident` (§7.14) |
+
+`approval.requested` is the push half of the white-label control: a
+customer who does not want to poll §2.8 receives the same object here
+and renders it the same way. The `source` for approval events is
+`/v1/approvals`; for incident events, `/v1/incidents`.
+
+**A missed webhook must not become an approval.** Delivery is
+at-least-once and not guaranteed; the approval's `expires_at` runs
+regardless, and expiry declines (§2.9). A customer who builds only on
+the webhook and never reads §2.8 will hold actions that quietly expire,
+which is safe but invisible. SDK documentation MUST say so where it
+documents these events.
 
 ### 9.3 `OutcomeEvent`
 
@@ -1317,7 +1777,7 @@ for how the harness MUST be wired in each language.
 ### 11.1 What the corpus does and does not cover
 
 Stated plainly, because "conformance is green" is otherwise read as
-"the surface is verified", and at 0.9.0 that is not what it means.
+"the surface is verified", and at 0.10.0 that is not what it means.
 
 `golden-envelopes.json` exercises 5 of the 15 methods in §5 —
 `subject_says`, `tool_call`, `tool_result`, `observation`, and `check` —
@@ -1366,10 +1826,10 @@ documented in `CHANGELOG.md` of the spec repo before a MAJOR is cut.
 
 Each SDK pins to a spec version in its language-native manifest:
 
-- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.9.0"`
-- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.9.0"}`
-- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.9.0</DMZAgentSpecVersion>`
-- Java: `pom.xml` → `<dmzagent.spec.version>0.9.0</dmzagent.spec.version>`
+- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.10.0"`
+- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.10.0"}`
+- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.10.0</DMZAgentSpecVersion>`
+- Java: `pom.xml` → `<dmzagent.spec.version>0.10.0</dmzagent.spec.version>`
 
 The SDK's CI MUST fail-loud if the pinned spec version doesn't match
 the version of the spec repo it checks out.

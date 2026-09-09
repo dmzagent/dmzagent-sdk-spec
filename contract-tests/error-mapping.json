@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.9.0",
+  "$schema_version": "0.10.0",
   "$description": "HTTP status → canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md §8.5).",
   "fixtures": [
     {
@@ -226,6 +226,51 @@
       "expected_exception": "RateLimitError",
       "expected_status_code": 429,
       "expected_retry_after": null
+    },
+    {
+      "name": "409_approval_already_decided",
+      "status": 409,
+      "body": {
+        "detail": "approval already decided",
+        "status": "approved"
+      },
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "decline",
+        "actor_id": "acct_9002"
+      },
+      "expected_exception": "ConflictError",
+      "expected_status_code": 409,
+      "$why": "Two operators clicked at the same moment. The second call did not fail, it lost — retrying cannot win it, and an SDK that treats this as transient turns a decline into a retry loop against a decision that stands (sdk-spec.md 3)."
+    },
+    {
+      "name": "409_approval_expired",
+      "status": 409,
+      "body": {
+        "detail": "approval expired",
+        "status": "expired"
+      },
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "approve",
+        "actor_id": "acct_4471"
+      },
+      "expected_exception": "ConflictError",
+      "expected_status_code": 409,
+      "$why": "The window closing is not a decision a late operator can win. Expiry declines (sdk-spec.md 2.9)."
+    },
+    {
+      "name": "403_incidents_key_lacks_scope",
+      "status": 403,
+      "body": {
+        "detail": "key lacks ledger:read"
+      },
+      "method": "get_incidents",
+      "args": {},
+      "expected_exception": "PermissionError",
+      "expected_status_code": 403
     }
   ]
 }
