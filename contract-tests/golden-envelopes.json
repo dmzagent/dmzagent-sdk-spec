@@ -435,8 +435,8 @@
         "actor_id": ""
       },
       "expected_exception": "ValidationError_or_ArgumentError",
-      "expected_message_contains": "actor_id",
-      "$why": "A caller with no human's identity at this point does not have a human. Refused locally, with no round trip, so the failure lands where the mistake is (sdk-spec.md 5.18)."
+      "expected_message_contains": "actor",
+      "$why": "A caller with no human's identity at this point does not have a human. Refused locally, with no round trip, so the failure lands where the mistake is (sdk-spec.md 5.18). The substring is 'actor' and not 'actor_id' on purpose: this corpus runs against every binding, and only Python spells the parameter actor_id — TypeScript, C# and Java all name it actorId, so a message naming the canonical wire key would be naming a parameter their callers do not have. A shared vector must not encode one language's spelling."
     },
     {
       "name": "decide_approval_rejects_unknown_decision",
