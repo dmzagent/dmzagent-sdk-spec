@@ -4,39 +4,93 @@
   "title": "CBCheckResponse",
   "description": "Response body for POST /v1/cb/check",
   "type": "object",
-  "required": ["state", "allow", "warning"],
+  "required": [
+    "state",
+    "allow",
+    "warning"
+  ],
   "properties": {
-    "state":   { "type": "string", "enum": ["closed", "half_open", "open"] },
-    "allow":   { "type": "boolean" },
-    "warning": { "type": "boolean" },
-    "reason":  { "type": "string" },
+    "state": {
+      "type": "string",
+      "enum": [
+        "closed",
+        "half_open",
+        "open"
+      ]
+    },
+    "allow": {
+      "type": "boolean"
+    },
+    "warning": {
+      "type": "boolean"
+    },
+    "reason": {
+      "type": "string"
+    },
     "fired_policies": {
       "type": "array",
       "items": {
         "type": "object",
-        "required": ["cb_policy_id", "name", "action"],
+        "required": [
+          "cb_policy_id",
+          "name",
+          "action"
+        ],
         "properties": {
-          "cb_policy_id": { "type": "string" },
-          "name":         { "type": "string" },
-          "action":       { "type": "string" }
+          "cb_policy_id": {
+            "type": "string"
+          },
+          "name": {
+            "type": "string"
+          },
+          "action": {
+            "type": "string",
+            "enum": [
+              "warn",
+              "open",
+              "require_approval"
+            ]
+          }
         }
       }
     },
     "anchor": {
       "oneOf": [
-        { "type": "null" },
+        {
+          "type": "null"
+        },
         {
           "type": "object",
-          "required": ["ledger_index", "hash"],
+          "required": [
+            "ledger_index",
+            "hash"
+          ],
           "properties": {
-            "ledger_index": { "type": "integer" },
-            "hash":         { "type": "string" }
+            "ledger_index": {
+              "type": "integer"
+            },
+            "hash": {
+              "type": "string"
+            }
           }
         }
       ]
     },
-    "checked_at":       { "type": "string" },
-    "latency_ms":       { "type": "number" },
-    "route_latency_ms": { "type": "number" }
+    "checked_at": {
+      "type": "string"
+    },
+    "latency_ms": {
+      "type": "number"
+    },
+    "route_latency_ms": {
+      "type": "number"
+    },
+    "pending_approval_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "The approval this check is waiting on, or null. Non-null only when a policy fired require_approval and no human has decided — and then allow is false. A denial that names an approval is an ask, not a refusal (sdk-spec.md 2.2)."
+    }
   }
 }

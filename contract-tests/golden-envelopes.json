@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.9.0",
+  "$schema_version": "0.10.0",
   "$description": "Each entry: drive the SDK with `method` + `args`. The resulting POST body MUST equal `expected_body` after JSON normalization (sort keys, no extra whitespace, no trailing newline). Snake_case keys here are canonical wire keys — SDK runners translate args to their idiomatic naming via §8 of sdk-spec.md. Subject ids appear in both documented forms (Appendix A): canonical `subject:<division_id>:<slug>` and its 4-part `subject:<division_id>:<type>:<slug>` variant, plus the deprecated legacy `user:<workspace_id>:<slug>`. Until 0.8.0 every fixture used the legacy form only, so all four SDKs were conformance-tested against the one shape that resolves to no division server-side. Keep at least one canonical fixture per method family.",
   "fixtures": [
     {
@@ -281,6 +281,102 @@
         "scope": "interaction",
         "scope_ref": "int_abc"
       }
+    },
+    {
+      "name": "list_approvals_defaults_to_pending",
+      "method": "list_approvals",
+      "args": {},
+      "expected_path": "/v1/approvals",
+      "expected_method": "GET",
+      "expected_query": {
+        "status": "pending"
+      },
+      "expected_body": null
+    },
+    {
+      "name": "list_approvals_filters_and_pages",
+      "method": "list_approvals",
+      "args": {
+        "status": "approved",
+        "subject_id": "user:ws_test:bot",
+        "limit": 50,
+        "cursor": "eyJpIjo0MH0"
+      },
+      "expected_path": "/v1/approvals",
+      "expected_method": "GET",
+      "expected_query": {
+        "status": "approved",
+        "subject_id": "user:ws_test:bot",
+        "limit": "50",
+        "cursor": "eyJpIjo0MH0"
+      },
+      "expected_body": null
+    },
+    {
+      "name": "decide_approval_carries_the_human",
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "approve",
+        "actor_id": "acct_4471",
+        "actor_label": "Dana R.",
+        "reason": "verified the order by phone"
+      },
+      "expected_path": "/v1/approvals/apr_7f3c9a1b/decision",
+      "expected_method": "POST",
+      "expected_body": {
+        "decision": "approve",
+        "actor_id": "acct_4471",
+        "actor_label": "Dana R.",
+        "reason": "verified the order by phone"
+      }
+    },
+    {
+      "name": "decline_sends_decline_not_a_flag",
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "decline",
+        "actor_id": "acct_4471"
+      },
+      "expected_path": "/v1/approvals/apr_7f3c9a1b/decision",
+      "expected_method": "POST",
+      "expected_body": {
+        "decision": "decline",
+        "actor_id": "acct_4471"
+      }
+    },
+    {
+      "name": "get_incidents_defaults_to_all",
+      "method": "get_incidents",
+      "args": {},
+      "expected_path": "/v1/incidents",
+      "expected_method": "GET",
+      "expected_query": {
+        "status": "all"
+      },
+      "expected_body": null
+    },
+    {
+      "name": "get_incidents_window_and_subject",
+      "method": "get_incidents",
+      "args": {
+        "status": "open",
+        "subject_id": "user:ws_test:bot",
+        "since": "2026-09-01T00:00:00Z",
+        "until": "2026-09-09T00:00:00Z",
+        "limit": 100
+      },
+      "expected_path": "/v1/incidents",
+      "expected_method": "GET",
+      "expected_query": {
+        "status": "open",
+        "subject_id": "user:ws_test:bot",
+        "since": "2026-09-01T00:00:00Z",
+        "until": "2026-09-09T00:00:00Z",
+        "limit": "100"
+      },
+      "expected_body": null
     }
   ],
   "validation_failures": [
@@ -329,6 +425,38 @@
       },
       "expected_exception": "ValidationError_or_ArgumentError",
       "expected_message_contains": "ck_"
+    },
+    {
+      "name": "decide_approval_rejects_missing_actor",
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "approve",
+        "actor_id": ""
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "actor_id",
+      "$why": "A caller with no human's identity at this point does not have a human. Refused locally, with no round trip, so the failure lands where the mistake is (sdk-spec.md 5.18)."
+    },
+    {
+      "name": "decide_approval_rejects_unknown_decision",
+      "method": "decide_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b",
+        "decision": "maybe",
+        "actor_id": "acct_4471"
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "decision"
+    },
+    {
+      "name": "list_approvals_rejects_limit_over_100",
+      "method": "list_approvals",
+      "args": {
+        "limit": 500
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "limit"
     }
   ]
 }

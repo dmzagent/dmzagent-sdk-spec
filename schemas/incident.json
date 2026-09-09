@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/incident.json",
+  "title": "Incident",
+  "description": "One entry of the append-only incident and remediation ledger (sdk-spec.md 2.10). status is a fold over what has been appended; there is no endpoint that closes one.",
+  "type": "object",
+  "required": ["incident_id", "status", "kind", "subject_id", "opened_at", "remediations"],
+  "properties": {
+    "incident_id": { "type": "string" },
+    "status":      { "type": "string", "enum": ["open", "remediated", "accepted"] },
+    "kind":        { "type": "string", "enum": ["cb_open", "cb_half_open", "policy_fired", "approval_required"] },
+    "subject_id":  { "type": "string" },
+    "frame_id":    { "type": ["string", "null"] },
+    "opened_at":   { "type": "string", "format": "date-time" },
+    "closed_at":   { "type": ["string", "null"], "format": "date-time" },
+    "reason":      { "type": "string" },
+    "fired_policies": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": ["cb_policy_id", "name", "action"],
+        "properties": {
+          "cb_policy_id": { "type": "string" },
+          "name":         { "type": "string" },
+          "action":       { "type": "string", "enum": ["warn", "open", "require_approval"] }
+        }
+      }
+    },
+    "remediations": {
+      "type": "array",
+      "description": "Oldest first. MAY be empty: an incident nobody has answered yet is an incident with no remediation, not an absent incident.",
+      "items": {
+        "type": "object",
+        "required": ["remediation_id", "kind", "outcome", "occurred_at"],
+        "properties": {
+          "remediation_id": { "type": "string" },
+          "kind":           { "type": "string", "enum": ["approval", "policy_change", "manual", "auto"] },
+          "approval_id":    { "type": ["string", "null"] },
+          "outcome":        { "type": "string" },
+          "actor_id":       { "type": ["string", "null"] },
+          "reason":         { "type": ["string", "null"] },
+          "occurred_at":    { "type": "string", "format": "date-time" },
+          "anchor": {
+            "oneOf": [
+              { "type": "null" },
+              {
+                "type": "object",
+                "required": ["ledger_index", "hash"],
+                "properties": {
+                  "ledger_index": { "type": "integer" },
+                  "hash":         { "type": "string" }
+                }
+              }
+            ]
+          }
+        }
+      }
+    },
+    "anchor": {
+      "description": "The ledger entry that opened this incident. A caller who recorded an anchor at check time can compare hashes here.",
+      "oneOf": [
+        { "type": "null" },
+        {
+          "type": "object",
+          "required": ["ledger_index", "hash"],
+          "properties": {
+            "ledger_index": { "type": "integer" },
+            "hash":         { "type": "string" }
+          }
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/incident-page.json",
+  "title": "IncidentPage",
+  "description": "Response body for GET /v1/incidents. Newest ledger_index first — never ordered by opened_at, which cannot separate two entries in the same second.",
+  "type": "object",
+  "required": ["incidents"],
+  "properties": {
+    "incidents": {
+      "type": "array",
+      "items": { "$ref": "https://spec.dmzagent.com/schemas/incident.json" }
+    },
+    "next_cursor": { "type": ["string", "null"] }
+  }
+}

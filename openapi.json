@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "DMZAgent SDK API",
-    "version": "0.9.0",
+    "version": "0.10.0",
     "summary": "The public surface every DMZAgent SDK speaks: emit events, check guards, and manage conversation settings.",
     "description": "This document describes the wire contract in sdk-spec.md, and nothing beyond it.\n\nIt is deliberately narrow. The reasoning server exposes a much larger internal REST surface; the endpoints here are the ones the four SDKs (Python, TypeScript, Java, C#) are permitted to call, so an integrator can read the whole contract in one sitting.\n\nEvery request and response body references a schema in `schemas/`, which stays the single source of truth — the schemas are JSON Schema 2020-12, which OpenAPI 3.1 uses natively, so nothing is duplicated or restated here.\n\nSee sdk-spec.md for the parts a document like this cannot express: method naming per language, thread safety, resource lifecycle, and the contract-test corpus every SDK must pass.",
     "license": {
@@ -50,6 +50,14 @@
     {
       "name": "divisions",
       "description": "Division configuration. Elevated permissions."
+    },
+    {
+      "name": "approvals",
+      "description": "Human-in-the-loop controls. A policy that fires require_approval holds the action; the customer renders the decision in their own product and posts it back. No field in these payloads carries DMZAgent presentation."
+    },
+    {
+      "name": "incidents",
+      "description": "The append-only incident and remediation ledger behind the anchor returned by /v1/cb/check and /v1/approvals. Read-only: a remediation is appended, never edited."
     }
   ],
   "paths": {
@@ -385,6 +393,263 @@
           }
         }
       }
+    },
+    "/v1/approvals": {
+      "get": {
+        "tags": [
+          "approvals"
+        ],
+        "operationId": "listApprovals",
+        "summary": "List approvals awaiting a human decision",
+        "description": "The read half of the white-label human-in-the-loop control. Every field needed to render the decision is here, and none of it is DMZAgent's presentation: `reason` and `fired_policies[].name` are the operator's own policy words, and `action` is the held call verbatim.\n\nNot auto-paginated by SDKs. Follow `next_cursor` explicitly.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "pending",
+                "approved",
+                "declined",
+                "expired"
+              ],
+              "default": "pending"
+            },
+            "description": "Defaults to pending — the only status that still needs a human."
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Restrict to one subject."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque, from a previous response's next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of approvals, newest first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApprovalPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthError"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/v1/approvals/{approval_id}/decision": {
+      "post": {
+        "tags": [
+          "approvals"
+        ],
+        "operationId": "decideApproval",
+        "summary": "Approve or decline a pending approval",
+        "description": "`actor_id` is required and is the customer's own identifier for the deciding human — DMZAgent resolves it against no directory, which is what keeps the flow white-label.\n\nA second decision on a settled approval is 409, and so is a decision past `expires_at`. Neither is transient: the call did not fail, it lost. An Idempotency-Key replays the original decision instead of conflicting.\n\nExpiry declines. There is no configuration that makes it approve.",
+        "parameters": [
+          {
+            "name": "approval_id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            },
+            "description": "As returned by GET /v1/approvals."
+          },
+          {
+            "$ref": "#/components/parameters/IdempotencyKey"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApprovalDecisionRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "The decided approval, with `decision` populated.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/Approval"
+                }
+              }
+            }
+          },
+          "409": {
+            "$ref": "#/components/responses/ConflictError"
+          },
+          "422": {
+            "$ref": "#/components/responses/UnprocessableError"
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthError"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
+    },
+    "/v1/incidents": {
+      "get": {
+        "tags": [
+          "incidents"
+        ],
+        "operationId": "getIncidents",
+        "summary": "Read the incident and remediation ledger",
+        "description": "Every breaker that opened, every approval decided, and every remediation that ran. This is the readable form of the anchor that /v1/cb/check and /v1/approvals hand back: a caller who recorded `{ledger_index, hash}` at check time finds that entry here and compares hashes.\n\nOrdered by ledger_index descending, never by opened_at — two incidents in the same second have an order, and it is the one the ledger recorded.\n\nAppend-only. There is no PATCH, no DELETE, and no endpoint that closes an incident: `status` is a fold over what has been appended.",
+        "parameters": [
+          {
+            "name": "status",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "enum": [
+                "open",
+                "remediated",
+                "accepted",
+                "all"
+              ],
+              "default": "all"
+            },
+            "description": "Filter by fold state."
+          },
+          {
+            "name": "subject_id",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Restrict to one subject."
+          },
+          {
+            "name": "since",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Entries at or after this instant."
+          },
+          {
+            "name": "until",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            },
+            "description": "Entries strictly before this instant."
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 100,
+              "default": 25
+            },
+            "description": "Page size."
+          },
+          {
+            "name": "cursor",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "string"
+            },
+            "description": "Opaque, from a previous response's next_cursor."
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "One page of ledger entries, newest ledger_index first.",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/IncidentPage"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/ValidationError"
+          },
+          "401": {
+            "$ref": "#/components/responses/AuthError"
+          },
+          "403": {
+            "$ref": "#/components/responses/PermissionError"
+          },
+          "429": {
+            "$ref": "#/components/responses/RateLimitError"
+          },
+          "500": {
+            "$ref": "#/components/responses/ServerError"
+          }
+        }
+      }
     }
   },
   "webhooks": {
@@ -471,6 +736,96 @@
         },
         "responses": {
           "200": {
+            "description": "Any 2xx acknowledges delivery."
+          }
+        }
+      }
+    },
+    "approval": {
+      "post": {
+        "operationId": "onApprovalEvent",
+        "summary": "An action is held pending a human decision, or that decision was made",
+        "description": "The push half of the white-label control: the same Approval object GET /v1/approvals returns, delivered instead of polled.\n\nDelivery is at-least-once and not guaranteed, and `expires_at` runs regardless. A customer who builds only on this webhook and never reads /v1/approvals will hold actions that quietly expire — safe, but invisible.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "approval.requested",
+                          "approval.decided"
+                        ]
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Approval"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
+            "description": "Any 2xx acknowledges delivery."
+          }
+        }
+      }
+    },
+    "incident": {
+      "post": {
+        "operationId": "onIncidentEvent",
+        "summary": "A ledger entry opened an incident, or a remediation was appended to one",
+        "description": "Carries the Incident in its state after the entry that fired the event. The ledger remains the authority; this saves a poll, it does not replace GET /v1/incidents.",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SignatureHeader"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "allOf": [
+                  {
+                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                  },
+                  {
+                    "type": "object",
+                    "properties": {
+                      "type": {
+                        "enum": [
+                          "incident.opened",
+                          "incident.remediated"
+                        ]
+                      },
+                      "data": {
+                        "$ref": "#/components/schemas/Incident"
+                      }
+                    }
+                  }
+                ]
+              }
+            }
+          }
+        },
+        "responses": {
+          "2XX": {
             "description": "Any 2xx acknowledges delivery."
           }
         }
@@ -750,6 +1105,21 @@
             ]
           }
         }
+      },
+      "Approval": {
+        "$ref": "./schemas/approval.json"
+      },
+      "ApprovalPage": {
+        "$ref": "./schemas/approval-page.json"
+      },
+      "ApprovalDecisionRequest": {
+        "$ref": "./schemas/approval-decision-request.json"
+      },
+      "Incident": {
+        "$ref": "./schemas/incident.json"
+      },
+      "IncidentPage": {
+        "$ref": "./schemas/incident-page.json"
       }
     },
     "responses": {

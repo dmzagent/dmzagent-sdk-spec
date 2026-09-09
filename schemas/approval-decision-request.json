@@ -1,0 +1,19 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/approval-decision-request.json",
+  "title": "ApprovalDecisionRequest",
+  "description": "Request body for POST /v1/approvals/{approval_id}/decision.",
+  "type": "object",
+  "required": ["decision", "actor_id"],
+  "properties": {
+    "decision": { "type": "string", "enum": ["approve", "decline"] },
+    "actor_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The deciding human, in the caller's own namespace. Required and never defaulted: the API key identifies the integration, and an approval whose actor is the integration that requested it records nobody."
+    },
+    "reason":      { "type": "string" },
+    "actor_label": { "type": "string" }
+  },
+  "additionalProperties": false
+}
