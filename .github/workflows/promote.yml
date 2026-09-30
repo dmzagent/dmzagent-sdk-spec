@@ -148,7 +148,7 @@ jobs:
               echo "nuget: confirmed"; POLLED_NUGET=1
             fi
             if [ "$POLLED_MAVEN" -eq 0 ] && curl -sf -o /dev/null \
-              "https://repo1.maven.org/maven2/dev/dmzagent/dmzagent-sdk/${VERSION}/dmzagent-sdk-${VERSION}.pom"; then
+              "https://repo1.maven.org/maven2/com/dmzagent/dmzagent-sdk/${VERSION}/dmzagent-sdk-${VERSION}.pom"; then
               echo "maven: confirmed"; POLLED_MAVEN=1
             fi
             if [ "$POLLED_PYPI" -eq 1 ] && [ "$POLLED_NPM" -eq 1 ] \
@@ -221,7 +221,7 @@ jobs:
           - **PyPI** — \`pip yank dmzagent==${VERSION}\` (maintainer account)
           - **npm** — \`npm deprecate @dmzagent/sdk@${VERSION} 'yanked: partial publish'\`
           - **NuGet** — unlist via the portal; NuGet has no delete after retention
-          - **Maven Central** — file a ticket, yanks are manual
+          - **Maven Central** — cannot be deleted; publish a fixed version (Central Portal support for anything else)
 
           Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}
           EOF
