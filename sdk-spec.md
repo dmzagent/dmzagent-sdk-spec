@@ -159,6 +159,64 @@ Requirements on SDKs:
 - `409` MUST surface as `ConflictError`, not as a retry the SDK performs
   itself. The caller decides whether to wait and retry.
 
+### 1.9 Agent mode
+
+An **agent session** is an interaction whose subject acts on its own: it
+calls tools, and something — the harness that runs it, the host it runs
+on, or DMZAgent — may let each call run or refuse it. Agent mode is the
+surface for governing such a session one step at a time, and for reading
+back what the agent's conduct showed.
+
+A session reports its steps through `POST /v1/agent-stream/step` (§2.11)
+rather than §2.1. Each step is one of three phases:
+
+| Phase    | Sent                                   | What the answer governs                 |
+|----------|----------------------------------------|------------------------------------------|
+| `intent` | when the agent states what it will do  | the session from here on                 |
+| `call`   | **before** a tool runs                 | whether this call runs                   |
+| `result` | after a call ran, failed, or was refused | the session from here on               |
+
+Each answer carries a **directive**: what the caller does next.
+
+| Directive  | The caller                                                                 |
+|------------|----------------------------------------------------------------------------|
+| `proceed`  | runs the call                                                              |
+| `warn`     | runs it; DMZAgent is watching, and the caller MAY tell the agent so         |
+| `hold`     | waits for the approval named in `approval_id` (§2.13); approved runs, anything else is `block` |
+| `block`    | does not run the call; the session carries on                              |
+| `shutdown` | does not run the call and ends the session; no further step will be allowed |
+
+On a `result` or `intent` step the call has already happened or no call
+is pending, so `block` there is an objection the caller SHOULD pass on to
+the agent, and `hold` means the next step waits.
+
+**Refusals are reported, whoever refused.** In agent mode a caller MUST
+send a `result` step with `status: refused` for every call that did not
+run, naming who refused it in `refused_by`: `governor` (DMZAgent's own
+directive), `harness` (the runner's own rules), or `host` (the tool,
+sandbox or operating system). A refusal is the evidence that makes a
+later step a *second attempt*, and an agent that gets around a rule is
+recognisable only against the rule it was refused by. A caller that
+knows a call retries an earlier one MAY say so with `attempt_of`; the
+server does not depend on it.
+
+**Behaviors.** Every answer lists the behaviors DMZAgent has observed so
+far, each with a `polarity` — `positive` or `negative` — a `strength`,
+the `source` that observed it (`logic`, evaluated at once, or
+`reasoning`), and the frames that are its evidence. The spec fixes the
+shape and not the vocabulary: `tag` names come from the canons installed
+where the session is governed, in the words of whoever wrote them, and an
+SDK MUST NOT map, rename or describe them. Behaviors observed by
+reasoning MAY arrive after the step that caused them; `settled: false`
+says so, and they are delivered as `behavior.observed` webhooks (§9.2)
+and read back from §2.12.
+
+**An unanswered step is not a yes.** When a `call` step cannot be sent or
+its answer cannot be read, the SDK raises (§3) and the caller MUST NOT
+run the call. When a directive is a value the SDK does not know
+(Appendix B), the SDK MUST expose the raw string and MUST report that the
+call may not run: an unknown word from the governor is read as `block`.
+
 ---
 
 ## 2. Endpoints
@@ -680,6 +738,131 @@ remediation is that remediation's own entry. A caller who recorded an
 anchor at check time (§2.2) can find exactly that entry here and compare
 hashes; an anchor that does not match the ledger is the one alarm this
 endpoint exists to make possible.
+
+### 2.11 POST /v1/agent-stream/step
+
+Report one step of an agent session (§1.9) and receive the directive for
+it in the same response.
+
+#### Request headers
+
+As §2.1. `Idempotency-Key` (§1.8) is RECOMMENDED: a harness that retries
+a `call` step must not have DMZAgent count one call as two attempts.
+
+#### Request body
+
+| Field              | Type              | Required          | Notes                                                        |
+|--------------------|-------------------|-------------------|--------------------------------------------------------------|
+| `agent_subject_id` | string            | yes               | The agent acting (Appendix A)                                |
+| `interaction_id`   | string            | yes               | The session. Caller-assigned and stable for the session's life |
+| `phase`            | enum string       | yes               | `intent` \| `call` \| `result`                               |
+| `call_id`          | string            | `call`, `result`  | Caller-assigned; unique within the session                   |
+| `tool`             | string            | `call`, `result`  | The tool's name, as the caller names it                      |
+| `args`             | object            | no                | `call`: the arguments, verbatim                              |
+| `status`           | enum string       | `result`          | `ok` \| `error` \| `refused`                                 |
+| `result`           | any               | no                | `result`: what the tool returned, if it ran                  |
+| `refused_by`       | enum string       | `status: refused` | `governor` \| `harness` \| `host`                            |
+| `reason`           | string            | no                | Why it was refused or failed, in the refuser's words         |
+| `attempt_of`       | string            | no                | The `call_id` this call retries, when the caller knows       |
+| `intent`           | object            | `intent`          | `{text, paths?, tools?}` — what the agent says it will do and touch |
+| `occurred_at`      | string (ISO-8601) | no                | Defaults to server receive-time                              |
+| `metadata`         | object            | no                | Free-form                                                    |
+
+`interaction_kind` is not sent: a step is an `agent_session` by
+definition.
+
+#### Response body
+
+```json
+{
+  "frame_id":       "fr_7c21",
+  "interaction_id": "sess_4b1e",
+  "directive":      "block",
+  "scope":          "interaction",
+  "reason":         "remote writes are the runner's",
+  "approval_id":    null,
+  "settled":        false,
+  "behaviors": [
+    {
+      "tag":       "circumvention",
+      "polarity":  "negative",
+      "strength":  0.82,
+      "source":    "reasoning",
+      "evidence":  ["fr_7b90", "fr_7c21"],
+      "calls":     ["call_12", "call_14"]
+    }
+  ],
+  "anchor":   {"ledger_index": 40311, "hash": "c0d9…"},
+  "livemode": true
+}
+```
+
+| Field         | Notes                                                                       |
+|---------------|-----------------------------------------------------------------------------|
+| `directive`   | `proceed` \| `warn` \| `hold` \| `block` \| `shutdown` (§1.9). Always present on a `200` |
+| `scope`       | `subject` \| `interaction` \| null — which scope gave the answer; null on `proceed` |
+| `reason`      | The operator's policy words. MAY be empty                                    |
+| `approval_id` | Non-null exactly when `directive` is `hold`                                  |
+| `settled`     | `false` while reasoning over this step is still running                      |
+| `behaviors`   | Behaviors observed in this session so far; MAY be empty                      |
+| `calls`       | On a behavior: the `call_id`s it concerns, when the server can name them     |
+
+A `shutdown` answers every later step in the session with `shutdown`.
+
+---
+
+### 2.12 GET /v1/subjects/{subject_id}/behaviors
+
+A subject's conduct record: every behavior observed, positive and
+negative, across its sessions.
+
+#### Query parameters
+
+| Parameter        | Type    | Required | Notes                                                    |
+|------------------|---------|----------|----------------------------------------------------------|
+| `polarity`       | enum    | no       | `positive` \| `negative` \| `all`; default `all`         |
+| `interaction_id` | string  | no       | restrict to one session                                  |
+| `since`          | string  | no       | ISO-8601; at or after this instant                       |
+| `until`          | string  | no       | ISO-8601; strictly before this instant                   |
+| `limit`          | integer | no       | 1–100, default 25                                        |
+| `cursor`         | string  | no       | opaque; from a previous response's `next_cursor`         |
+
+#### Response body
+
+```json
+{
+  "behaviors": [
+    {
+      "behavior_id":    "bhv_19ac",
+      "subject_id":     "seat:agent-a",
+      "interaction_id": "sess_4b1e",
+      "tag":            "circumvention",
+      "polarity":       "negative",
+      "strength":       0.82,
+      "source":         "reasoning",
+      "evidence":       ["fr_7b90", "fr_7c21"],
+      "calls":          ["call_12", "call_14"],
+      "observed_at":    "2026-10-07T15:02:11Z",
+      "anchor":         {"ledger_index": 40312, "hash": "77ab…"}
+    }
+  ],
+  "next_cursor": null
+}
+```
+
+Ordered newest first by `ledger_index`, on the terms of §2.10. The
+record is append-only: a behavior is never withdrawn, and a later
+behavior of the other polarity is a new entry, not an edit. An SDK MUST
+NOT offer a method that removes or amends one.
+
+---
+
+### 2.13 GET /v1/approvals/{approval_id}
+
+One approval (§7.12), by id: how a caller holding a `hold` directive
+learns whether it was approved without walking §2.8. An unknown id
+returns `404`, which §3 maps to `DMZAgentError`: a dedicated not-found
+type would change the hierarchy of §3, and is deferred.
 
 ---
 
@@ -1212,6 +1395,43 @@ appending an approval decision is how an incident reaches
 `remediated`, and a method that says otherwise describes a ledger this
 one is not.
 
+### 5.22 `agent_step(agent_subject_id, interaction_id, phase, ...) → StepResult`
+
+Report one step of an agent session (§2.11). Keyword arguments are the
+request fields of §2.11; `idempotency_key` is OPTIONAL and, as §1.8
+requires, never generated by the SDK.
+
+Validated locally, with no round trip: `phase` is one of the three;
+`call_id` and `tool` are present on `call` and `result`; `status` is
+present on `result`; `refused_by` is present exactly when `status` is
+`refused`; `intent` is present on `intent`. A malformed step is a mistake
+in the harness, and the failure belongs where the mistake is.
+
+### 5.23 `agent_session(agent_subject_id, interaction_id) → AgentSession`
+
+A handle bound to one session, on the terms of §6. Its methods each send
+one step and return a `StepResult`:
+
+| Method                                              | Sends                                   |
+|-----------------------------------------------------|-----------------------------------------|
+| `intent(text, paths?, tools?)`                      | `phase: intent`                         |
+| `call(call_id, tool, args?, attempt_of?)`           | `phase: call`                           |
+| `result(call_id, tool, status, result?, reason?)`   | `phase: result`, `status` `ok` or `error` |
+| `refused(call_id, tool, refused_by, reason?, attempt_of?)` | `phase: result`, `status: refused` |
+
+Each accepts `idempotency_key`. The handle holds no state beyond its two
+ids: it does not remember refusals or infer `attempt_of`.
+
+### 5.24 `list_behaviors(subject_id, polarity?, interaction_id?, since?, until?, limit?, cursor?) → BehaviorPage`
+
+Read a subject's conduct record (§2.12). The no-auto-pagination rule of
+§5.16 applies. `iter_behaviors(...)` walks it lazily, on the terms of
+§5.17.
+
+### 5.25 `get_approval(approval_id) → Approval`
+
+One approval (§2.13).
+
 ---
 
 ## 6. Conversation handle
@@ -1497,6 +1717,49 @@ An incident with `remediations` empty and `status` `open` is the normal
 shape of something nobody has answered yet. An SDK MUST NOT collapse it
 to null, an empty result, or an error.
 
+### 7.16 `StepResult`
+
+Returned by `agent_step()` and the `AgentSession` methods.
+
+| Field            | Type              | Notes                                                   |
+|------------------|-------------------|---------------------------------------------------------|
+| `frame_id`       | string            |                                                         |
+| `interaction_id` | string            |                                                         |
+| `directive`      | string            | one of §1.9's five, or the raw string if unknown        |
+| `scope`          | string \| null    |                                                         |
+| `reason`         | string            |                                                         |
+| `approval_id`    | string \| null    |                                                         |
+| `settled`        | boolean           |                                                         |
+| `behaviors`      | array<Behavior>   |                                                         |
+| `anchor`         | object \| null    |                                                         |
+| `livemode`       | boolean \| null   | as §2.1                                                 |
+| `runs`           | boolean           | derived: `true` exactly for `proceed` and `warn`        |
+| `raw`            | object            | the full server JSON response                           |
+
+`runs` has no counterpart on the wire. It exists so that the one
+question a harness asks — may this call run? — has one answer in every
+language, and so that an unknown directive answers it `false` (§1.9).
+
+### 7.17 `Behavior`
+
+| Field            | Type            | Notes                                                    |
+|------------------|-----------------|----------------------------------------------------------|
+| `tag`            | string          | the installed canon's own name for it                    |
+| `polarity`       | string          | `positive` \| `negative`, or the raw string if unknown    |
+| `strength`       | number          | 0–1                                                      |
+| `source`         | string          | `logic` \| `reasoning`                                   |
+| `evidence`       | array<string>   | frame ids                                                |
+| `calls`          | array<string>   | call ids, MAY be empty                                   |
+| `behavior_id`, `subject_id`, `interaction_id`, `observed_at`, `anchor` | | present when read from §2.12 |
+
+### 7.18 `BehaviorPage`
+
+| Field         | Type             | Notes                              |
+|---------------|------------------|------------------------------------|
+| `behaviors`   | array<Behavior>  | newest `ledger_index` first        |
+| `next_cursor` | string \| null   | null on the last page              |
+| `raw`         | object           | the full server JSON response      |
+
 ### 7.15 Immutability
 
 Result types MUST be immutable in the language (Python `@dataclass(frozen=True)`,
@@ -1557,6 +1820,15 @@ your SDK MUST expose.
 | `decline_approval` | `decline_approval` | `declineApproval`   | `DeclineApproval`   | `declineApproval`   |
 | `get_incidents`    | `get_incidents`    | `getIncidents`      | `GetIncidents`      | `getIncidents`      |
 | `iter_incidents`   | `iter_incidents`   | `iterIncidents`     | `IterIncidents`     | `iterIncidents`     |
+| `agent_step` | `agent_step` | `agentStep` | `AgentStep` | `agentStep` |
+| `agent_session` | `agent_session` | `agentSession` | `AgentSession` | `agentSession` |
+| `intent` | `intent` | `intent` | `Intent` | `intent` |
+| `call` | `call` | `call` | `Call` | `call` |
+| `result` | `result` | `result` | `Result` | `result` |
+| `refused` | `refused` | `refused` | `Refused` | `refused` |
+| `list_behaviors` | `list_behaviors` | `listBehaviors` | `ListBehaviors` | `listBehaviors` |
+| `iter_behaviors` | `iter_behaviors` | `iterBehaviors` | `IterBehaviors` | `iterBehaviors` |
+| `get_approval` | `get_approval` | `getApproval` | `GetApproval` | `getApproval` |
 
 ### 8.3 Constructor parameters
 
@@ -1618,6 +1890,19 @@ your SDK MUST expose.
 | `closed_at`          | `closed_at`         | `closedAt`           | `ClosedAt`           | `closedAt`              |
 | `occurred_at`        | `occurred_at`       | `occurredAt`         | `OccurredAt`         | `occurredAt`            |
 | `next_cursor`        | `next_cursor`       | `nextCursor`         | `NextCursor`         | `nextCursor`            |
+| `directive` | `directive` | `directive` | `Directive` | `directive` |
+| `settled` | `settled` | `settled` | `Settled` | `settled` |
+| `behaviors` | `behaviors` | `behaviors` | `Behaviors` | `behaviors` |
+| `behavior_id` | `behavior_id` | `behaviorId` | `BehaviorId` | `behaviorId` |
+| `polarity` | `polarity` | `polarity` | `Polarity` | `polarity` |
+| `strength` | `strength` | `strength` | `Strength` | `strength` |
+| `evidence` | `evidence` | `evidence` | `Evidence` | `evidence` |
+| `calls` | `calls` | `calls` | `Calls` | `calls` |
+| `observed_at` | `observed_at` | `observedAt` | `ObservedAt` | `observedAt` |
+| `call_id` | `call_id` | `callId` | `CallId` | `callId` |
+| `refused_by` | `refused_by` | `refusedBy` | `RefusedBy` | `refusedBy` |
+| `attempt_of` | `attempt_of` | `attemptOf` | `AttemptOf` | `attemptOf` |
+| `runs` | `runs` | `runs` | `Runs` | `runs` |
 
 ### 8.5 Exceptions
 
@@ -1648,6 +1933,11 @@ MUST be exposed under the language's naming:
 
 The on-wire `kind` string is ALWAYS the snake_case form regardless of
 how the SDK exposes the enum.
+
+`EVENT_KINDS` is unchanged by agent mode: a step is not an event kind,
+it is sent to its own endpoint (§2.11). Two further constants MUST be
+exposed the same way: `STEP_PHASES` = `["intent", "call", "result"]` and
+`DIRECTIVES` = `["proceed", "warn", "hold", "block", "shutdown"]`.
 
 ---
 
@@ -1688,6 +1978,7 @@ depends on the event type.
 | `approval.decided`   | A human approved or declined an approval | `Approval` (§7.12) |
 | `incident.opened`    | A ledger entry opened an incident | `Incident` (§7.14) |
 | `incident.remediated`| A remediation was appended to an incident | `Incident` (§7.14) |
+| `behavior.observed`  | A behavior was observed in an agent session, including one that settled after its step answered | `Behavior` (§7.17), as read from §2.12 |
 
 `approval.requested` is the push half of the white-label control: a
 customer who does not want to poll §2.8 receives the same object here

@@ -109,6 +109,17 @@ for each fixture in fixtures:
 canonical name listed in §8.5 of `sdk-spec.md`. Each runner implements
 this map.
 
+#### step-vectors.json
+
+Agent mode (spec §1.9, §2.11). For each entry in `fixtures`, serve
+`responses` from the stub transport, call `agent_step` with `args`, and
+assert that the request matches `expected_request` and that every key
+in `expected_result` equals the same field of the returned `StepResult`
+(for `behaviors`, each listed key of each listed behavior, in order).
+`runs` is the derived field of §7.16 and MUST be asserted on every
+vector. For each entry in `failures`, the call MUST raise
+`expected_exception` and MUST NOT return a result.
+
 ## Reporting
 
 The runner MUST exit non-zero on any assertion failure and emit a

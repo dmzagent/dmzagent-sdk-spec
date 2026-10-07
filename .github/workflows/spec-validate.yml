@@ -92,6 +92,8 @@ jobs:
               # 0.10.0 — the white-label human-in-the-loop control and the
               # readable ledger (spec 2.8-2.10).
               "list_approvals", "decide_approval", "get_incidents",
+              # Agent mode (spec 1.9, 2.11-2.13).
+              "agent_step", "list_behaviors", "get_approval",
           }
           for fx in ge["fixtures"]:
               for k in ("name", "method", "args", "expected_path", "expected_body"):
@@ -188,9 +190,35 @@ jobs:
               if fx.get("expected_exception") not in allowed_exceptions:
                   fails.append(f"outcome_timeouts/{fx['name']}: unknown exception {fx.get('expected_exception')}")
 
+          # ---- step-vectors.json ----
+          # Agent mode (spec 1.9). The vectors that matter are the ones where
+          # a call must not run; a corpus with none of them pins nothing.
+          stv = json.loads((root / "step-vectors.json").read_text())
+          assert "fixtures" in stv and "failures" in stv, "step-vectors missing keys"
+          for fx in stv["fixtures"]:
+              for k in ("name", "method", "args", "responses", "expected_request", "expected_result"):
+                  if k not in fx:
+                      fails.append(f"step_vectors/{fx.get('name','?')}: missing {k}")
+              if fx.get("method") != "agent_step":
+                  fails.append(f"step_vectors/{fx['name']}: unexpected method {fx.get('method')}")
+              if "runs" not in (fx.get("expected_result") or {}):
+                  fails.append(f"step_vectors/{fx['name']}: expected_result must state runs")
+          if not any((fx.get("expected_result") or {}).get("runs") is False
+                     and (fx["expected_result"].get("directive") not in
+                          ("proceed", "warn", "hold", "block", "shutdown"))
+                     for fx in stv["fixtures"]):
+              fails.append("step_vectors: no vector pins an unknown directive to runs=false")
+          for fx in stv["failures"]:
+              for k in ("name", "method", "args", "responses", "expected_exception"):
+                  if k not in fx:
+                      fails.append(f"step_failures/{fx.get('name','?')}: missing {k}")
+              if fx.get("expected_exception") not in allowed_exceptions:
+                  fails.append(f"step_failures/{fx['name']}: unknown exception {fx.get('expected_exception')}")
+
           # ---- corpus schema_version tracks VERSION ----
           version = (root.parent / "VERSION").read_text().strip()
-          for fname in ("golden-envelopes.json", "error-mapping.json", "outcome-vectors.json"):
+          for fname in ("golden-envelopes.json", "error-mapping.json", "outcome-vectors.json",
+                        "step-vectors.json"):
               sv_declared = json.loads((root / fname).read_text()).get("$schema_version")
               if sv_declared != version:
                   fails.append(f"{fname}: $schema_version {sv_declared} != VERSION {version}")
@@ -203,7 +231,8 @@ jobs:
                 f"{len(sv['fixtures'])} signature vectors, "
                 f"{len(em['fixtures'])} error mappings, "
                 f"{len(ov['fixtures'])} outcome vectors, "
-                f"{len(ov['timeouts'])} outcome timeouts")
+                f"{len(ov['timeouts'])} outcome timeouts, "
+                f"{len(stv['fixtures'])} step vectors")
           PY
 
       - name: Verify naming map covers every public method

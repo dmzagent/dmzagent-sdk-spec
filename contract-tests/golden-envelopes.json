@@ -377,6 +377,160 @@
         "limit": "100"
       },
       "expected_body": null
+    },
+    {
+      "name": "agent_step_call",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_7",
+        "tool": "Bash",
+        "args": {
+          "command": "git push origin HEAD"
+        }
+      },
+      "expected_path": "/v1/agent-stream/step",
+      "expected_method": "POST",
+      "expected_body": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_7",
+        "tool": "Bash",
+        "args": {
+          "command": "git push origin HEAD"
+        }
+      }
+    },
+    {
+      "name": "agent_step_refused_names_who_and_what_it_retries",
+      "method": "agent_step",
+      "$why": "The refusal is the evidence a later attempt is judged against (sdk-spec.md 1.9). refused_by and attempt_of travel verbatim; the SDK infers neither.",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_9",
+        "tool": "Bash",
+        "status": "refused",
+        "refused_by": "harness",
+        "reason": "remote writes are the runner's",
+        "attempt_of": "call_7"
+      },
+      "expected_path": "/v1/agent-stream/step",
+      "expected_method": "POST",
+      "expected_body": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_9",
+        "tool": "Bash",
+        "status": "refused",
+        "refused_by": "harness",
+        "reason": "remote writes are the runner's",
+        "attempt_of": "call_7"
+      }
+    },
+    {
+      "name": "agent_step_result_ok",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_8",
+        "tool": "Read",
+        "status": "ok",
+        "result": "def main(): ..."
+      },
+      "expected_path": "/v1/agent-stream/step",
+      "expected_method": "POST",
+      "expected_body": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_8",
+        "tool": "Read",
+        "status": "ok",
+        "result": "def main(): ..."
+      }
+    },
+    {
+      "name": "agent_step_intent",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "intent",
+        "intent": {
+          "text": "Add a trace id to every request.",
+          "paths": [
+            "src/obs/"
+          ],
+          "tools": [
+            "Edit",
+            "Bash"
+          ]
+        }
+      },
+      "expected_path": "/v1/agent-stream/step",
+      "expected_method": "POST",
+      "expected_body": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "intent",
+        "intent": {
+          "text": "Add a trace id to every request.",
+          "paths": [
+            "src/obs/"
+          ],
+          "tools": [
+            "Edit",
+            "Bash"
+          ]
+        }
+      }
+    },
+    {
+      "name": "list_behaviors_defaults",
+      "method": "list_behaviors",
+      "args": {
+        "subject_id": "subject:dv_test:agent-a"
+      },
+      "expected_path": "/v1/subjects/subject:dv_test:agent-a/behaviors",
+      "expected_method": "GET",
+      "expected_query": {},
+      "expected_body": null
+    },
+    {
+      "name": "list_behaviors_negative_in_one_session",
+      "method": "list_behaviors",
+      "args": {
+        "subject_id": "subject:dv_test:agent-a",
+        "polarity": "negative",
+        "interaction_id": "sess_1",
+        "limit": 10
+      },
+      "expected_path": "/v1/subjects/subject:dv_test:agent-a/behaviors",
+      "expected_method": "GET",
+      "expected_query": {
+        "polarity": "negative",
+        "interaction_id": "sess_1",
+        "limit": "10"
+      },
+      "expected_body": null
+    },
+    {
+      "name": "get_approval_by_id",
+      "method": "get_approval",
+      "args": {
+        "approval_id": "apr_7f3c9a1b"
+      },
+      "expected_path": "/v1/approvals/apr_7f3c9a1b",
+      "expected_method": "GET",
+      "expected_body": null
     }
   ],
   "validation_failures": [
@@ -453,6 +607,83 @@
       "name": "list_approvals_rejects_limit_over_100",
       "method": "list_approvals",
       "args": {
+        "limit": 500
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "limit"
+    },
+    {
+      "name": "agent_step_unknown_phase",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "plan"
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "phase"
+    },
+    {
+      "name": "agent_step_call_without_call_id",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "tool": "Bash"
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "call",
+      "$why": "'call' rather than 'call_id': the parameter is callId outside Python (see decide_approval_rejects_missing_actor)."
+    },
+    {
+      "name": "agent_step_refused_without_refuser",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_9",
+        "tool": "Bash",
+        "status": "refused"
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "refused",
+      "$why": "A refusal that does not say who refused cannot be told apart from the governor's own, which is the distinction circumvention is judged on."
+    },
+    {
+      "name": "agent_step_refuser_on_a_call_that_ran",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "result",
+        "call_id": "call_8",
+        "tool": "Read",
+        "status": "ok",
+        "refused_by": "host"
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "refused"
+    },
+    {
+      "name": "agent_step_without_interaction",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "phase": "intent",
+        "intent": {
+          "text": "x"
+        }
+      },
+      "expected_exception": "ValidationError_or_ArgumentError",
+      "expected_message_contains": "interaction"
+    },
+    {
+      "name": "list_behaviors_rejects_limit_over_100",
+      "method": "list_behaviors",
+      "args": {
+        "subject_id": "subject:dv_test:agent-a",
         "limit": 500
       },
       "expected_exception": "ValidationError_or_ArgumentError",
