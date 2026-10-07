@@ -1,0 +1,356 @@
+{
+  "$schema_version": "0.10.0",
+  "$description": "Conformance vectors for agent_step() (sdk-spec.md 1.9, 2.11, 7.16): how a step's answer is read. The runner stubs the transport to serve `responses` in order, calls `method` with `args`, and asserts the request and the StepResult. `expected_result.runs` is the derived field every harness branches on; the vectors that matter most are the ones where it must be false.",
+  "fixtures": [
+    {
+      "name": "step_proceed_runs",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "proceed",
+            "scope": null,
+            "reason": "",
+            "approval_id": null,
+            "settled": true,
+            "behaviors": [],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "proceed",
+        "runs": true,
+        "settled": true
+      }
+    },
+    {
+      "name": "step_warn_runs",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "warn",
+            "scope": "subject",
+            "reason": "a reviewer is watching",
+            "approval_id": null,
+            "settled": true,
+            "behaviors": [],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "warn",
+        "runs": true,
+        "scope": "subject"
+      }
+    },
+    {
+      "name": "step_hold_names_its_approval_and_does_not_run",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "hold",
+            "scope": "interaction",
+            "reason": "needs a person",
+            "approval_id": "apr_9",
+            "settled": true,
+            "behaviors": [],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "hold",
+        "runs": false,
+        "approval_id": "apr_9"
+      }
+    },
+    {
+      "name": "step_block_does_not_run_and_carries_behaviors",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "block",
+            "scope": "interaction",
+            "reason": "remote writes are the runner's",
+            "approval_id": null,
+            "settled": false,
+            "behaviors": [
+              {
+                "tag": "circumvention",
+                "polarity": "negative",
+                "strength": 0.82,
+                "source": "reasoning",
+                "evidence": [
+                  "fr_0",
+                  "fr_1"
+                ],
+                "calls": [
+                  "call_0",
+                  "call_1"
+                ]
+              }
+            ],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "block",
+        "runs": false,
+        "settled": false,
+        "behaviors": [
+          {
+            "tag": "circumvention",
+            "polarity": "negative",
+            "calls": [
+              "call_0",
+              "call_1"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "name": "step_shutdown_does_not_run",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "shutdown",
+            "scope": "subject",
+            "reason": "held by an operator",
+            "approval_id": null,
+            "settled": true,
+            "behaviors": [],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "shutdown",
+        "runs": false
+      }
+    },
+    {
+      "name": "step_unknown_directive_is_read_as_block",
+      "$why": "Appendix B lets the server add a directive. An SDK that did not know it must not let the call run: an unknown word from the governor is not a yes (sdk-spec.md 1.9).",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "quarantine",
+            "scope": "subject",
+            "reason": "",
+            "approval_id": null,
+            "settled": true,
+            "behaviors": [],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "quarantine",
+        "runs": false
+      }
+    },
+    {
+      "name": "step_unknown_polarity_is_kept_raw",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 200,
+          "body": {
+            "frame_id": "fr_1",
+            "interaction_id": "sess_1",
+            "directive": "proceed",
+            "scope": null,
+            "reason": "",
+            "approval_id": null,
+            "settled": true,
+            "behaviors": [
+              {
+                "tag": "kept-its-word",
+                "polarity": "neutral",
+                "strength": 0.82,
+                "source": "reasoning",
+                "evidence": [
+                  "fr_0",
+                  "fr_1"
+                ],
+                "calls": [
+                  "call_0",
+                  "call_1"
+                ]
+              }
+            ],
+            "anchor": null,
+            "livemode": false
+          }
+        }
+      ],
+      "expected_request": {
+        "method": "POST",
+        "path": "/v1/agent-stream/step"
+      },
+      "expected_result": {
+        "directive": "proceed",
+        "runs": true,
+        "behaviors": [
+          {
+            "tag": "kept-its-word",
+            "polarity": "neutral"
+          }
+        ]
+      }
+    }
+  ],
+  "failures": [
+    {
+      "name": "step_unanswered_raises",
+      "$why": "An unanswered call step is not a yes. The SDK raises; it never returns a StepResult the caller could read as permission.",
+      "method": "agent_step",
+      "args": {
+        "agent_subject_id": "subject:dv_test:agent-a",
+        "interaction_id": "sess_1",
+        "phase": "call",
+        "call_id": "call_1",
+        "tool": "Bash",
+        "args": {
+          "command": "ls"
+        }
+      },
+      "responses": [
+        {
+          "status": 503,
+          "body": {
+            "detail": "unavailable"
+          }
+        }
+      ],
+      "expected_exception": "ServerError"
+    }
+  ]
+}

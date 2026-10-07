@@ -1,0 +1,160 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/agent-step-request.json",
+  "title": "AgentStepRequest",
+  "description": "Request body for POST /v1/agent-stream/step (sdk-spec.md 2.11). A refusal, by whoever refused, is reported as a result with status refused.",
+  "type": "object",
+  "required": [
+    "agent_subject_id",
+    "interaction_id",
+    "phase"
+  ],
+  "properties": {
+    "agent_subject_id": {
+      "type": "string"
+    },
+    "interaction_id": {
+      "type": "string"
+    },
+    "phase": {
+      "type": "string",
+      "enum": [
+        "intent",
+        "call",
+        "result"
+      ]
+    },
+    "call_id": {
+      "type": "string"
+    },
+    "tool": {
+      "type": "string"
+    },
+    "args": {
+      "type": "object"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "ok",
+        "error",
+        "refused"
+      ]
+    },
+    "result": {},
+    "refused_by": {
+      "type": "string",
+      "enum": [
+        "governor",
+        "harness",
+        "host"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "attempt_of": {
+      "type": "string"
+    },
+    "intent": {
+      "type": "object",
+      "required": [
+        "text"
+      ],
+      "properties": {
+        "text": {
+          "type": "string"
+        },
+        "paths": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        },
+        "tools": {
+          "type": "array",
+          "items": {
+            "type": "string"
+          }
+        }
+      }
+    },
+    "occurred_at": {
+      "type": "string"
+    },
+    "metadata": {
+      "type": "object"
+    }
+  },
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "call"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "call_id",
+          "tool"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "result"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "call_id",
+          "tool",
+          "status"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "phase": {
+            "const": "intent"
+          }
+        }
+      },
+      "then": {
+        "required": [
+          "intent"
+        ]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "status": {
+            "const": "refused"
+          }
+        },
+        "required": [
+          "status"
+        ]
+      },
+      "then": {
+        "required": [
+          "refused_by"
+        ]
+      },
+      "else": {
+        "not": {
+          "required": [
+            "refused_by"
+          ]
+        }
+      }
+    }
+  ]
+}

@@ -1,0 +1,85 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/behavior.json",
+  "title": "Behavior",
+  "description": "A behavior observed in an agent session (sdk-spec.md 1.9). The tag is the installed canon's own word; the spec fixes the shape, never the vocabulary. Fields from behavior_id onward are present when read from GET /v1/subjects/{subject_id}/behaviors.",
+  "type": "object",
+  "required": [
+    "tag",
+    "polarity",
+    "strength",
+    "source",
+    "evidence"
+  ],
+  "properties": {
+    "tag": {
+      "type": "string"
+    },
+    "polarity": {
+      "type": "string",
+      "description": "positive | negative. SDKs expose an unknown value as its raw string (Appendix B).",
+      "examples": [
+        "positive",
+        "negative"
+      ]
+    },
+    "strength": {
+      "type": "number",
+      "minimum": 0,
+      "maximum": 1
+    },
+    "source": {
+      "type": "string",
+      "examples": [
+        "logic",
+        "reasoning"
+      ]
+    },
+    "evidence": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "calls": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "behavior_id": {
+      "type": "string"
+    },
+    "subject_id": {
+      "type": "string"
+    },
+    "interaction_id": {
+      "type": "string"
+    },
+    "observed_at": {
+      "type": "string"
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "ledger_index",
+            "hash"
+          ],
+          "properties": {
+            "ledger_index": {
+              "type": "integer"
+            },
+            "hash": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    }
+  }
+}

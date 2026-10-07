@@ -14,6 +14,7 @@ files and drives the SDK under test.
 | `golden-envelopes.json`    | Serialization round-trips for every event kind         |
 | `signature-vectors.json`   | HMAC webhook verifier vectors                          |
 | `error-mapping.json`       | HTTP status → exception type mapping                   |
+| `step-vectors.json`        | Agent mode: reading a step's directive, unknown values fail closed |
 | `runner-spec.md`           | How each SDK's runner must be wired                    |
 
 ## How a runner works

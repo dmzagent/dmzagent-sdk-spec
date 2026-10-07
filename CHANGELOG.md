@@ -7,6 +7,43 @@ versioning per `sdk-spec.md` §11.
 
 ## [Unreleased]
 
+### Added
+- **Agent mode (§1.9, §2.11–§2.13, §5.22–§5.25, §7.16–§7.18).** An agent
+  session is governed one step at a time. `POST /v1/agent-stream/step`
+  takes an `intent`, a `call` (sent before the tool runs) or a `result`,
+  and answers in the same response with a **directive** — `proceed`,
+  `warn`, `hold`, `block` or `shutdown` — that the caller acts on. Until
+  now a caller derived that from which scope of `/v1/cb/check` said no and
+  whether the no named an approval, over three round trips; the word is
+  now on the wire.
+
+  **Refusals are reported, whoever refused.** A call that did not run is a
+  `result` with `status: refused` and `refused_by` (`governor`, `harness`
+  or `host`). A rule an agent got around is recognisable only against the
+  refusal it got around, so a caller that drops its own harness's refusals
+  hides exactly the attempts this mode exists to see.
+
+  **Behaviors carry a polarity.** Each answer lists what has been observed
+  in the session, `positive` or `negative`, with a strength, the layer
+  that observed it (`logic` at once, `reasoning` possibly later — hence
+  `settled`), and its evidence frames. The spec fixes the shape and not
+  the vocabulary: tags are the installed canons' own words, on the terms
+  of 0.10.0's white-label rule. `GET /v1/subjects/{subject_id}/behaviors`
+  is the append-only conduct record, and `behavior.observed` its webhook.
+
+  **An unknown directive is read as `block`.** Appendix B lets the server
+  add one; an SDK that does not know it MUST NOT let the call run.
+  `StepResult.runs` is the derived answer to "may this call run?", and
+  `step-vectors.json` pins it, unknown directive included.
+
+- `GET /v1/approvals/{approval_id}`, so a caller holding a `hold` learns
+  the decision without walking the list.
+
+### Compat
+MINOR, additive: three endpoints, one webhook type, no change to
+`EVENT_KINDS` or to any existing request or response. `VERSION` is not
+bumped until the server implements §2.11–§2.13.
+
 ## [0.10.0] — 2026-09-09
 
 ### Added

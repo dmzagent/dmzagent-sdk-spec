@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/behavior-page.json",
+  "title": "BehaviorPage",
+  "description": "Response body for GET /v1/subjects/{subject_id}/behaviors. Newest ledger_index first. Append-only: a behavior is never withdrawn or amended.",
+  "type": "object",
+  "required": [
+    "behaviors"
+  ],
+  "properties": {
+    "behaviors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://spec.dmzagent.com/schemas/behavior.json"
+      }
+    },
+    "next_cursor": {
+      "type": [
+        "string",
+        "null"
+      ]
+    }
+  }
+}

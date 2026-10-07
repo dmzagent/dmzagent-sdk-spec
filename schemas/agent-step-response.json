@@ -1,0 +1,86 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://spec.dmzagent.com/schemas/agent-step-response.json",
+  "title": "AgentStepResponse",
+  "description": "Response body for POST /v1/agent-stream/step. directive is always present on a 200; an SDK reads a value it does not know as a call that may not run.",
+  "type": "object",
+  "required": [
+    "frame_id",
+    "interaction_id",
+    "directive",
+    "settled",
+    "behaviors"
+  ],
+  "properties": {
+    "frame_id": {
+      "type": "string"
+    },
+    "interaction_id": {
+      "type": "string"
+    },
+    "directive": {
+      "type": "string",
+      "examples": [
+        "proceed",
+        "warn",
+        "hold",
+        "block",
+        "shutdown"
+      ]
+    },
+    "scope": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "examples": [
+        "subject",
+        "interaction"
+      ]
+    },
+    "reason": {
+      "type": "string"
+    },
+    "approval_id": {
+      "type": [
+        "string",
+        "null"
+      ],
+      "description": "Non-null exactly when directive is hold."
+    },
+    "settled": {
+      "type": "boolean"
+    },
+    "behaviors": {
+      "type": "array",
+      "items": {
+        "$ref": "https://spec.dmzagent.com/schemas/behavior.json"
+      }
+    },
+    "anchor": {
+      "oneOf": [
+        {
+          "type": "null"
+        },
+        {
+          "type": "object",
+          "required": [
+            "ledger_index",
+            "hash"
+          ],
+          "properties": {
+            "ledger_index": {
+              "type": "integer"
+            },
+            "hash": {
+              "type": "string"
+            }
+          }
+        }
+      ]
+    },
+    "livemode": {
+      "type": "boolean"
+    }
+  }
+}
