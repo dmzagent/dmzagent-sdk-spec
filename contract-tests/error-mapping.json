@@ -108,7 +108,7 @@
           {
             "cb_policy_id": "pol_123",
             "name": "refund_velocity",
-            "action": "open"
+            "action": "block"
           }
         ],
         "anchor": {
