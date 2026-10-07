@@ -61,6 +61,26 @@ versioning per `sdk-spec.md` §11.
   shapes are unchanged. `openapi.json` names the envelope
   `WebhookEnvelope`.
 
+- **What four implementations had to guess, settled.** Written while
+  the four SDKs implemented agent mode, each from the text alone:
+  - A step answer that cannot be read (a 2xx with no `directive`, or not
+    JSON) raises `ServerError` (§1.9). Two SDKs had chosen the base type.
+  - §5.22's local checks include `agent_subject_id` and
+    `interaction_id`, `intent.text`, and `refused_by` on any phase; the
+    values of `status` and `refused_by` are not checked locally.
+  - A subject id in a path is one RFC 3986 segment with `:` and `@` left
+    as they are (§2.12), which is what the golden vector always required.
+  - `list_behaviors` sends only the filters passed (§5.24).
+  - A missing `settled` reads `false`, a missing `livemode` `null` (§7.16).
+  - `AgentSession` holds its client and its two ids, and has no `close()`
+    (§5.23).
+  - §8.1 names `StepResult`, `Behavior`, `BehaviorPage`, `AgentSession`,
+    `STEP_PHASES` and `DIRECTIVES`; §11.1 describes the 0.11.0 corpus and
+    says a golden runner answers `agent_step` with a readable step.
+- **`outcome.completed` may carry `held`** (§9.3): the outcome of a
+  workspace that fails closed when reasoning cannot run, which §2.7's
+  story already reported.
+
 ### Compat
 MINOR. Additive on the request and response side: three endpoints, one
 webhook type, no change to `EVENT_KINDS` or to any existing request or

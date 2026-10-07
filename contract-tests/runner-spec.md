@@ -21,7 +21,7 @@ A runner exists to prove three things, in this order:
 
 The SDK repo MUST check out a specific tag of `dmzagent-sdk-spec` in
 CI. The pinned tag MUST match the spec version recorded in the SDK's
-language-native manifest (see §11.1 of `sdk-spec.md`).
+language-native manifest (see §12.1 of `sdk-spec.md`).
 
 A submodule or git-checkout-action with a `ref:` pin is preferred over
 copying fixtures into the SDK repo — that way fixture drift surfaces
@@ -48,6 +48,9 @@ for each fixture in fixtures:
   call client.<method>(**args)
   assert captured.path == fixture.expected_path
   assert json_normalize(captured.body) == json_normalize(fixture.expected_body)
+  # the stub answers agent_step with a readable step, e.g.
+  # {"frame_id":"fr_x","interaction_id":"<sent>","directive":"proceed",...}:
+  # an SDK that follows sdk-spec §1.9 raises on a body with no directive.
 
 for each fixture in validation_failures:
   expect the SDK to raise an exception whose canonical type matches
