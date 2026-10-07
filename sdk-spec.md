@@ -309,13 +309,18 @@ method; the SDK derives `scope` and `scope_ref` from which was set.
 }
 ```
 
-`state` ∈ {`closed`, `half_open`, `open`}.
-`allow` is `false` only when `state == open`.
+`state` ∈ {`closed`, `half_open`, `hold`, `open`}.
+`allow` is `false` when `state` is `hold` or `open`.
 `warning` is `true` when `state == half_open`.
+`hold` is a subject waiting on a person: a `require_approval` policy, or
+an operator, holds it. A state an SDK does not know denies (Appendix B).
 
 `fired_policies` is an array of `{cb_policy_id, name, action}` objects.
-`action` ∈ {`warn`, `open`, `require_approval`}.
-`anchor` is an object `{ledger_index, hash}` or `null`.
+`action` ∈ {`allow`, `review`, `block`, `require_approval`}: a policy that
+matches sets `closed`, `half_open`, `open` or `hold` respectively, and
+the most restrictive wins.
+`anchor` is an object `{ledger_index, hash}` or `null`; the server also
+sends `ledger_event_id` in it, which an SDK MAY ignore.
 
 `pending_approval_id` is the approval this check is waiting on, or
 `null`. It is non-null only when a policy fired with action
@@ -1595,8 +1600,8 @@ Returned by `check()`.
 
 | Field              | Type            | Notes                                            |
 |--------------------|-----------------|--------------------------------------------------|
-| `state`            | enum            | `closed` \| `half_open` \| `open`                |
-| `allow`            | boolean         | `false` only when state is `open`                |
+| `state`            | enum            | `closed` \| `half_open` \| `hold` \| `open`     |
+| `allow`            | boolean         | `false` when state is `hold` or `open`           |
 | `warning`          | boolean         | `true` when state is `half_open`                 |
 | `reason`           | string          |                                                  |
 | `fired_policies`   | array<object>   | `[{cb_policy_id, name, action}]`                |

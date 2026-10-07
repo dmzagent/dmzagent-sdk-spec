@@ -77,6 +77,12 @@ versioning per `sdk-spec.md` §11.
   - §8.1 names `StepResult`, `Behavior`, `BehaviorPage`, `AgentSession`,
     `STEP_PHASES` and `DIRECTIVES`; §11.1 describes the 0.11.0 corpus and
     says a golden runner answers `agent_step` with a readable step.
+- **§2.2 describes the breaker the server runs.** `state` includes
+  `hold` (a subject waiting on a person), which denies; policy `action`
+  is `allow`, `review`, `block` or `require_approval`, not `warn` /
+  `open` / `require_approval`; the anchor also carries `ledger_event_id`.
+  An SDK that reads `allow` was already correct: the server has always
+  sent `allow: false` for a hold.
 - **`outcome.completed` may carry `held`** (§9.3): the outcome of a
   workspace that fails closed when reasoning cannot run, which §2.7's
   story already reported.

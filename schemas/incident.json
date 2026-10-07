@@ -22,7 +22,7 @@
         "properties": {
           "cb_policy_id": { "type": "string" },
           "name":         { "type": "string" },
-          "action":       { "type": "string", "enum": ["warn", "open", "require_approval"] }
+          "action":       { "type": "string", "enum": ["allow", "review", "block", "require_approval"] }
         }
       }
     },

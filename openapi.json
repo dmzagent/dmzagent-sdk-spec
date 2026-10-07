@@ -130,7 +130,7 @@
         ],
         "operationId": "checkGuard",
         "summary": "Check whether a subject or interaction is currently allowed to act",
-        "description": "Synchronous. `allow` is false only when `state` is open, and `warning` is true when `state` is half_open.\n\nAn open state is delivered as a normal 200 — it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
+        "description": "Synchronous. `allow` is false when `state` is hold or open, and `warning` is true when `state` is half_open. A hold names the approval it waits on in `pending_approval_id`; an open state names none.\n\nAn open state is delivered as a normal 200 — it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
         "requestBody": {
           "required": true,
           "content": {
