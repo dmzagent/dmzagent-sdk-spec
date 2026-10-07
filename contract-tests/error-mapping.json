@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.10.0",
+  "$schema_version": "0.11.0",
   "$description": "HTTP status → canonical exception. Runner stubs the SDK's HTTP transport to return the fixture's status + body, calls method, and asserts the raised exception's canonical type matches `expected_exception`. Each SDK runner maps the canonical name to its language type (see sdk-spec.md §8.5).",
   "fixtures": [
     {
@@ -108,7 +108,7 @@
           {
             "cb_policy_id": "pol_123",
             "name": "refund_velocity",
-            "action": "open"
+            "action": "block"
           }
         ],
         "anchor": {

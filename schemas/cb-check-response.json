@@ -15,6 +15,7 @@
       "enum": [
         "closed",
         "half_open",
+        "hold",
         "open"
       ]
     },
@@ -46,8 +47,9 @@
           "action": {
             "type": "string",
             "enum": [
-              "warn",
-              "open",
+              "allow",
+              "review",
+              "block",
               "require_approval"
             ]
           }

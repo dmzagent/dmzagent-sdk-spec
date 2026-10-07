@@ -3,7 +3,7 @@
   "jsonSchemaDialect": "https://json-schema.org/draft/2020-12/schema",
   "info": {
     "title": "DMZAgent SDK API",
-    "version": "0.10.0",
+    "version": "0.11.0",
     "summary": "The public surface every DMZAgent SDK speaks: emit events, check guards, and manage conversation settings.",
     "description": "This document describes the wire contract in sdk-spec.md, and nothing beyond it.\n\nIt is deliberately narrow. The reasoning server exposes a much larger internal REST surface; the endpoints here are the ones the four SDKs (Python, TypeScript, Java, C#) are permitted to call, so an integrator can read the whole contract in one sitting.\n\nEvery request and response body references a schema in `schemas/`, which stays the single source of truth — the schemas are JSON Schema 2020-12, which OpenAPI 3.1 uses natively, so nothing is duplicated or restated here.\n\nSee sdk-spec.md for the parts a document like this cannot express: method naming per language, thread safety, resource lifecycle, and the contract-test corpus every SDK must pass.",
     "license": {
@@ -130,7 +130,7 @@
         ],
         "operationId": "checkGuard",
         "summary": "Check whether a subject or interaction is currently allowed to act",
-        "description": "Synchronous. `allow` is false only when `state` is open, and `warning` is true when `state` is half_open.\n\nAn open state is delivered as a normal 200 — it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
+        "description": "Synchronous. `allow` is false when `state` is hold or open, and `warning` is true when `state` is half_open. A hold names the approval it waits on in `pending_approval_id`; an open state names none.\n\nAn open state is delivered as a normal 200 — it is an answer, not a transport failure. SDKs surface it as a typed exception only when the caller opts in (guard with raise_on_open).",
         "requestBody": {
           "required": true,
           "content": {
@@ -720,7 +720,7 @@
         ],
         "operationId": "listBehaviors",
         "summary": "A subject's conduct record",
-        "description": "Every behavior observed, positive and negative, newest ledger_index first. Append-only: a behavior is never withdrawn, and one of the other polarity is a new entry.",
+        "description": "Every behavior observed, positive and negative, newest observed_at first: the tags that fired on the subject's soul while it ran its steps, each with the strength the soul holds for it now. A tag accepted as expected for the subject is not listed; a behavior is never edited, and one of the other polarity is a new entry.",
         "parameters": [
           {
             "name": "subject_id",
@@ -880,7 +880,7 @@
       "post": {
         "operationId": "onOutcomeCompleted",
         "summary": "Per-workspace reasoning finished for a frame",
-        "description": "Delivered to a registered webhook URL as a CloudEvents 1.0 envelope. Verify the X-DMZAgent-Signature header before trusting the body — every SDK ships a verify_webhook_signature helper for this.",
+        "description": "Delivered to a registered webhook URL in the envelope of sdk-spec.md 9.1. Verify the X-DMZAgent-Signature header before trusting the body — every SDK ships a verify_webhook_signature helper for this.",
         "parameters": [
           {
             "$ref": "#/components/parameters/SignatureHeader"
@@ -893,12 +893,12 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                    "$ref": "#/components/schemas/WebhookEnvelope"
                   },
                   {
                     "type": "object",
                     "properties": {
-                      "type": {
+                      "kind": {
                         "const": "outcome.completed"
                       },
                       "data": {
@@ -922,7 +922,7 @@
       "post": {
         "operationId": "onReviewEvent",
         "summary": "A review was opened, resolved, or updated",
-        "description": "Carries type `review.opened`, `review.resolved`, or `review.updated`. Delivered as a CloudEvents 1.0 envelope and signed the same way as outcome.completed.",
+        "description": "Carries kind `review.opened`, `review.resolved`, or `review.updated`. Delivered in the envelope of sdk-spec.md 9.1 and signed the same way as outcome.completed.",
         "parameters": [
           {
             "$ref": "#/components/parameters/SignatureHeader"
@@ -935,12 +935,12 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                    "$ref": "#/components/schemas/WebhookEnvelope"
                   },
                   {
                     "type": "object",
                     "properties": {
-                      "type": {
+                      "kind": {
                         "enum": [
                           "review.opened",
                           "review.resolved",
@@ -981,12 +981,12 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                    "$ref": "#/components/schemas/WebhookEnvelope"
                   },
                   {
                     "type": "object",
                     "properties": {
-                      "type": {
+                      "kind": {
                         "enum": [
                           "approval.requested",
                           "approval.decided"
@@ -1026,12 +1026,12 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                    "$ref": "#/components/schemas/WebhookEnvelope"
                   },
                   {
                     "type": "object",
                     "properties": {
-                      "type": {
+                      "kind": {
                         "enum": [
                           "incident.opened",
                           "incident.remediated"
@@ -1071,12 +1071,12 @@
               "schema": {
                 "allOf": [
                   {
-                    "$ref": "#/components/schemas/CloudEventEnvelope"
+                    "$ref": "#/components/schemas/WebhookEnvelope"
                   },
                   {
                     "type": "object",
                     "properties": {
-                      "type": {
+                      "kind": {
                         "enum": [
                           "behavior.observed"
                         ]
@@ -1169,44 +1169,6 @@
       },
       "ReviewEvent": {
         "$ref": "./schemas/review-event.json"
-      },
-      "CloudEventEnvelope": {
-        "title": "CloudEventEnvelope",
-        "description": "The CloudEvents 1.0 envelope every webhook delivery carries. The `data` shape depends on `type`.",
-        "type": "object",
-        "required": [
-          "specversion",
-          "type",
-          "source",
-          "id",
-          "time",
-          "datacontenttype",
-          "data"
-        ],
-        "properties": {
-          "specversion": {
-            "const": "1.0"
-          },
-          "type": {
-            "type": "string"
-          },
-          "source": {
-            "type": "string"
-          },
-          "id": {
-            "type": "string"
-          },
-          "time": {
-            "type": "string",
-            "format": "date-time"
-          },
-          "datacontenttype": {
-            "const": "application/json"
-          },
-          "data": {
-            "type": "object"
-          }
-        }
       },
       "Error": {
         "title": "Error",
@@ -1399,6 +1361,54 @@
       },
       "BehaviorPage": {
         "$ref": "./schemas/behavior-page.json"
+      },
+      "WebhookEnvelope": {
+        "title": "WebhookEnvelope",
+        "description": "The object every webhook delivery carries (sdk-spec.md 9.1). `data` depends on `kind`. For every event this spec defines, `title` and `body` are empty and `link` is null: the customer's product renders the event from `data` in its own words. A receiver ignores a `kind` it does not know and answers 2xx.",
+        "type": "object",
+        "required": [
+          "api_version",
+          "kind",
+          "workspace_id",
+          "title",
+          "body",
+          "link",
+          "data",
+          "delivered_at"
+        ],
+        "properties": {
+          "api_version": {
+            "type": "string",
+            "examples": [
+              "2026-05-30"
+            ]
+          },
+          "kind": {
+            "type": "string"
+          },
+          "workspace_id": {
+            "type": "string"
+          },
+          "title": {
+            "type": "string"
+          },
+          "body": {
+            "type": "string"
+          },
+          "link": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "data": {
+            "type": "object"
+          },
+          "delivered_at": {
+            "type": "string",
+            "format": "date-time"
+          }
+        }
       }
     },
     "responses": {
