@@ -5,7 +5,7 @@ All notable changes to the DMZAgent SDK specification are documented here.
 The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/);
 versioning per `sdk-spec.md` §11.
 
-## [Unreleased]
+## [0.11.0] — 2026-10-07
 
 ### Added
 - **Agent mode (§1.9, §2.11–§2.13, §5.22–§5.25, §7.16–§7.18).** An agent
@@ -29,7 +29,7 @@ versioning per `sdk-spec.md` §11.
   `settled`), and its evidence frames. The spec fixes the shape and not
   the vocabulary: tags are the installed canons' own words, on the terms
   of 0.10.0's white-label rule. `GET /v1/subjects/{subject_id}/behaviors`
-  is the append-only conduct record, and `behavior.observed` its webhook.
+  is the conduct record, and `behavior.observed` its webhook.
 
   **An unknown directive is read as `block`.** Appendix B lets the server
   add one; an SDK that does not know it MUST NOT let the call run.
@@ -39,10 +39,35 @@ versioning per `sdk-spec.md` §11.
 - `GET /v1/approvals/{approval_id}`, so a caller holding a `hold` learns
   the decision without walking the list.
 
+### Changed
+- **The conduct record is the subject's soul, read through its steps
+  (§2.12, §7.18).** A behavior is a tag that fired on the subject while
+  it ran a step. Its `strength` is what the soul holds for that tag now,
+  and falls as the soul lets it go; a tag the operator accepted as
+  expected for the subject is not listed; erasing the subject erases the
+  record. A page is ordered newest `observed_at` first: logic and
+  reasoning anchor on different ledger chains, whose indexes do not
+  compare, so `ledger_index` stays on each behavior as evidence and stops
+  being the order.
+
+- **§9.1 describes the envelope the server sends.** It said CloudEvents
+  1.0; the server has always sent `{api_version, kind, workspace_id,
+  title, body, link, data, delivered_at}` with `X-DMZAgent-Event`,
+  `-Delivery` and `-Attempt` headers, and receivers in production parse
+  that. The spec follows the wire rather than the other way round, so no
+  receiver breaks. For every §9.2 event `title` and `body` are empty and
+  `link` is null — the white-label rule of 0.10.0 applied to the
+  envelope — and a receiver ignores a `kind` it does not know. The `data`
+  shapes are unchanged. `openapi.json` names the envelope
+  `WebhookEnvelope`.
+
 ### Compat
-MINOR, additive: three endpoints, one webhook type, no change to
-`EVENT_KINDS` or to any existing request or response. `VERSION` is not
-bumped until the server implements §2.11–§2.13.
+MINOR. Additive on the request and response side: three endpoints, one
+webhook type, no change to `EVENT_KINDS` or to any existing request or
+response. The webhook envelope is a documentation correction: nothing
+on the wire changes, but an integrator who parsed the documented
+CloudEvents fields never received them and should read `kind` and
+`data`.
 
 ## [0.10.0] — 2026-09-09
 

@@ -2,7 +2,7 @@
   "$schema": "https://json-schema.org/draft/2020-12/schema",
   "$id": "https://spec.dmzagent.com/schemas/behavior-page.json",
   "title": "BehaviorPage",
-  "description": "Response body for GET /v1/subjects/{subject_id}/behaviors. Newest ledger_index first. Append-only: a behavior is never withdrawn or amended.",
+  "description": "Response body for GET /v1/subjects/{subject_id}/behaviors. Newest observed_at first. A behavior is the subject's soul read through its steps: strength is what the soul holds now, a tag accepted as expected is not listed, and a behavior is never edited.",
   "type": "object",
   "required": [
     "behaviors"

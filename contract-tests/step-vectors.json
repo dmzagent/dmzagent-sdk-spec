@@ -1,5 +1,5 @@
 {
-  "$schema_version": "0.10.0",
+  "$schema_version": "0.11.0",
   "$description": "Conformance vectors for agent_step() (sdk-spec.md 1.9, 2.11, 7.16): how a step's answer is read. The runner stubs the transport to serve `responses` in order, calls `method` with `args`, and asserts the request and the StepResult. `expected_result.runs` is the derived field every harness branches on; the vectors that matter most are the ones where it must be false.",
   "fixtures": [
     {

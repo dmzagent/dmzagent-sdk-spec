@@ -1,8 +1,8 @@
 # DMZAgent SDK Specification
 
-**Version:** see [`VERSION`](./VERSION) — currently `0.10.0`
+**Version:** see [`VERSION`](./VERSION) — currently `0.11.0`
 **Status:** pre-1.0 (MINOR bumps may include breaking wire changes)
-**Last updated:** 2026-09-09
+**Last updated:** 2026-10-07
 
 This document defines the public surface every DMZAgent SDK MUST
 implement. Every language binding — Python, TypeScript, C#, Java — is a
@@ -850,10 +850,20 @@ negative, across its sessions.
 }
 ```
 
-Ordered newest first by `ledger_index`, on the terms of §2.10. The
-record is append-only: a behavior is never withdrawn, and a later
-behavior of the other polarity is a new entry, not an edit. An SDK MUST
-NOT offer a method that removes or amends one.
+Ordered newest first by `observed_at`. Each behavior is anchored on the
+ledger entry of the pass that observed it, but a logic pass and a
+reasoning pass anchor on different chains, whose indexes do not compare,
+so `ledger_index` is evidence and not an order.
+
+**The record is the subject's soul, read through its steps.** A behavior
+is a tag that fired on the subject while it ran a step (§2.11), and
+`strength` is what the subject's soul holds for that tag *now*: it falls
+as the soul lets the tag go, to 0. A tag the operator has accepted as
+expected for the subject is not listed, and erasing the subject erases
+its record. A later behavior of the other polarity is a new entry, not
+an edit. An SDK MUST NOT offer a method that removes or amends one: the
+record is corrected by correcting the soul, never by editing a
+behavior.
 
 ---
 
@@ -1756,7 +1766,7 @@ language, and so that an unknown directive answers it `false` (§1.9).
 
 | Field         | Type             | Notes                              |
 |---------------|------------------|------------------------------------|
-| `behaviors`   | array<Behavior>  | newest `ledger_index` first        |
+| `behaviors`   | array<Behavior>  | newest `observed_at` first         |
 | `next_cursor` | string \| null   | null on the last page              |
 | `raw`         | object           | the full server JSON response      |
 
@@ -1948,27 +1958,51 @@ triage/review notifications. Every webhook payload is signed (see §10).
 
 ### 9.1 Event envelope
 
-Every webhook POST carries:
+Every webhook POST carries one JSON object:
 
 ```json
 {
-  "specversion": "1.0",
-  "type": "review.opened",
-  "source": "/v1/reviews",
-  "id": "evt_uuid",
-  "time": "2026-06-10T12:00:00Z",
-  "datacontenttype": "application/json",
-  "data": { ... }
+  "api_version":  "2026-05-30",
+  "kind":         "approval.requested",
+  "workspace_id": "ws_xxx",
+  "title":        "",
+  "body":         "",
+  "link":         null,
+  "data":         { ... },
+  "delivered_at": "2026-06-10T12:00:00.000Z"
 }
 ```
 
-All standard CloudEvents 1.0 attributes (`specversion`, `type`, `source`,
-`id`, `time`, `datacontenttype`) are present. The `data` payload shape
-depends on the event type.
+| Field          | Notes                                                              |
+|----------------|--------------------------------------------------------------------|
+| `api_version`  | the payload's version; it changes only with an incompatible shape   |
+| `kind`         | the event type (§9.2); also sent as the `X-DMZAgent-Event` header   |
+| `workspace_id` | the workspace whose subscription this delivery is for              |
+| `title`, `body`| empty for every §9.2 event; see below                               |
+| `link`         | `null` for every §9.2 event                                         |
+| `data`         | the event's object; its shape depends on `kind` (§9.2)              |
+| `delivered_at` | when the delivery was queued, ISO-8601 UTC                          |
+
+Each POST also carries `X-DMZAgent-Signature` (§10), `X-DMZAgent-Event`
+(the `kind`), `X-DMZAgent-Delivery` (one id per subscription per event,
+the same on every retry, so a receiver deduplicates on it) and
+`X-DMZAgent-Attempt` (1, 2 or 3). Delivery is retried after 30 seconds
+and again after 5 minutes; a 2xx on any attempt ends it.
+
+**`title` and `body` are empty, and `link` is null, for every event in
+§9.2.** The same server sends operator notifications to webhooks too,
+and those carry DMZAgent's words. The events this spec defines are read
+by a customer's product and rendered in its own vocabulary (§2.8), so
+the envelope carries no presentation for them. An SDK MUST NOT render
+display text from them.
+
+A receiver MUST ignore a `kind` it does not know rather than fail the
+delivery: a non-2xx answer is retried, and an unknown event retried three
+times is three failures that disable the subscription after five.
 
 ### 9.2 Event types
 
-| Type                 | When fired                        | `data` shape            |
+| `kind`               | When fired                        | `data` shape            |
 |----------------------|-----------------------------------|-------------------------|
 | `review.opened`      | A coordinate/review disposition created a new review | `ReviewEvent` (§7.6) |
 | `review.resolved`    | A human resolved or dismissed a review | `ReviewEvent` (§7.6) |
@@ -1982,8 +2016,7 @@ depends on the event type.
 
 `approval.requested` is the push half of the white-label control: a
 customer who does not want to poll §2.8 receives the same object here
-and renders it the same way. The `source` for approval events is
-`/v1/approvals`; for incident events, `/v1/incidents`.
+and renders it the same way.
 
 **A missed webhook must not become an approval.** Delivery is
 at-least-once and not guaranteed; the approval's `expires_at` runs
@@ -2124,10 +2157,10 @@ documented in `CHANGELOG.md` of the spec repo before a MAJOR is cut.
 
 Each SDK pins to a spec version in its language-native manifest:
 
-- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.10.0"`
-- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.10.0"}`
-- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.10.0</DMZAgentSpecVersion>`
-- Java: `pom.xml` → `<dmzagent.spec.version>0.10.0</dmzagent.spec.version>`
+- Python: `pyproject.toml` → `[tool.dmzagent] spec-version = "0.11.0"`
+- TypeScript: `package.json` → `"dmzagent": {"specVersion": "0.11.0"}`
+- C#: `Directory.Build.props` → `<DMZAgentSpecVersion>0.11.0</DMZAgentSpecVersion>`
+- Java: `pom.xml` → `<dmzagent.spec.version>0.11.0</dmzagent.spec.version>`
 
 The SDK's CI MUST fail-loud if the pinned spec version doesn't match
 the version of the spec repo it checks out.
